@@ -1,6 +1,27 @@
-*__pycache__*
-*pyc
-*.out
-*.log
-*.egg-info*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
 
+# 数据与模型（按需调整）
+datasets/
+data/
+outputs/
+checkpoints/
+models/
+*.pt
+*.bin
+*.safetensors
+
+# HF / datasets 缓存
+.cache/
+huggingface/
+
+# 日志和临时
+*.log
+logs/
+tmp/

@@ -53,53 +53,109 @@ from open_r1.trainer.utils.prompt_gallery import (
 )
 
 
-def get_model(name, device_map="auto", max_model_len=4096):
-    is_qwen2vl = 'qwen2vl' in name.lower() or 'qwen2-vl' in name.lower()
-    is_qwen25vl = 'qwen2.5-vl' in name.lower() or 'qwen25-vl' in name.lower() or 'qwen2.5vl' in name.lower()
-    is_llava = 'llava' in name.lower()
+# def get_model(name, device_map="auto", max_model_len=4096):
+#     is_qwen2vl = 'qwen2vl' in name.lower() or 'qwen2-vl' in name.lower()
+#     is_qwen25vl = 'qwen2.5-vl' in name.lower() or 'qwen25-vl' in name.lower() or 'qwen2.5vl' in name.lower()
+#     is_llava = 'llava' in name.lower()
+#     base_model_name = None
+
+
+def get_model(name, device_map="auto", max_model_len=2048):
+    lower_name = name.lower()
+
+    is_r1_sgg = "r1-sgg" in lower_name
+    is_qwen2vl = ('qwen2vl' in lower_name) or ('qwen2-vl' in lower_name)
+    is_qwen25vl = ('qwen2.5-vl' in lower_name) or ('qwen25-vl' in lower_name) or ('qwen2.5vl' in lower_name)
+    is_llava = 'llava' in lower_name
+
     base_model_name = None
+
+    # 兼容 R1-SGG / R1-SGG-PSG / Zero 系列命名
+    if is_r1_sgg:
+        if 'zero' in lower_name:
+            # 当前公开的 R1-SGG-Zero 系列在作者页上显示为 8B，同样沿用 7B Qwen2-VL 底座判断更稳
+            base_model_name = "Qwen/Qwen2-VL-7B-Instruct"
+            is_qwen2vl = True
+        elif '7b' in lower_name:
+            # R1-SGG-7B 模型卡注明 base_model 是 Qwen2-VL-7B-Instruct
+            base_model_name = "Qwen/Qwen2-VL-7B-Instruct"
+            is_qwen2vl = True
+        elif '2b' in lower_name:
+            base_model_name = "Qwen/Qwen2-VL-2B-Instruct"
+            is_qwen2vl = True
+
+            
+    # if is_qwen2vl or is_qwen25vl:
+    #     print("Using model:", name)
+    #     # min_pixels = 4*28*28
+    #     # max_pixels = 1024*28*28
+    #     min_pixels = 4*28*28    #ly改
+    #     max_pixels = 512*28*28  #ly改
+    #     if is_qwen2vl:
+    #         if '7b' in name.lower():
+    #             base_model_name = "Qwen/Qwen2-VL-7B-Instruct" 
+    #         elif '2b' in name.lower():
+    #             base_model_name = "Qwen/Qwen2-VL-2B-Instruct"
+    #     if is_qwen25vl:
+    #         if '7b' in name.lower():
+    #             base_model_name = "Qwen/Qwen2.5-VL-7B-Instruct" 
+    #         elif '3b' in name.lower():
+    #             base_model_name = "Qwen/Qwen2.5-VL-3B-Instruct" 
+
+    #     assert base_model_name is not None, "TODO: check the model -- {}".format(name)
+
+
     if is_qwen2vl or is_qwen25vl:
         print("Using model:", name)
-        min_pixels = 4*28*28
-        max_pixels = 1024*28*28
+
+    min_pixels = 4 * 28 * 28
+    max_pixels = 512 * 28 * 28   # 单卡3090先保守一点
+
+    if base_model_name is None:
         if is_qwen2vl:
-            if '7b' in name.lower():
-                base_model_name = "Qwen/Qwen2-VL-7B-Instruct" 
-            elif '2b' in name.lower():
+            if '7b' in lower_name:
+                base_model_name = "Qwen/Qwen2-VL-7B-Instruct"
+            elif '2b' in lower_name:
                 base_model_name = "Qwen/Qwen2-VL-2B-Instruct"
+
         if is_qwen25vl:
-            if '7b' in name.lower():
-                base_model_name = "Qwen/Qwen2.5-VL-7B-Instruct" 
-            elif '3b' in name.lower():
-                base_model_name = "Qwen/Qwen2.5-VL-3B-Instruct" 
+            if '7b' in lower_name:
+                base_model_name = "Qwen/Qwen2.5-VL-7B-Instruct"
+            elif '3b' in lower_name:
+                base_model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
+        assert base_model_name is not None, f"Cannot infer base model for: {name}"
+    
+    processor = AutoProcessor.from_pretrained(
+        base_model_name,
+        min_pixels=min_pixels,
+        max_pixels=max_pixels,
+    )
 
-        assert base_model_name is not None, "TODO: check the model -- {}".format(name)
-        processor = AutoProcessor.from_pretrained(base_model_name, 
-                                        min_pixels=min_pixels, max_pixels=max_pixels)
+    try:
+        local_model_path = snapshot_download(name)
+        print(f"set model:{name} to local path:", local_model_path)
+        name = local_model_path
+    except Exception:
+        pass
 
-        try:
-            local_model_path = snapshot_download(name)
-            print(f"set model:{name} to local path:", local_model_path)
-            name = local_model_path
-        except:
-            pass
+    model = LLM(
+        model=name,
+        limit_mm_per_prompt={"image": 1},
+        dtype="bfloat16",
+        device=device_map,
+        max_model_len=max_model_len,
+        mm_processor_kwargs={"max_pixels": max_pixels, "min_pixels": min_pixels},
+    )
 
-        model = LLM(
-            model=name, 
-            limit_mm_per_prompt={"image": 1},
-            dtype='bfloat16',
-            device=device_map,
-            max_model_len=max_model_len,
-            mm_processor_kwargs= { "max_pixels": max_pixels, "min_pixels": min_pixels},
-        )
-    elif is_llava:
+    if is_llava:
         model_cls = LlavaForConditionalGeneration if '1.5' in name else LlavaNextForConditionalGeneration
         model = model_cls.from_pretrained(
                   name, 
                   torch_dtype=torch.bfloat16, 
               ).to(device_map)
         processor = AutoProcessor.from_pretrained(name)
-    else:
+
+    if not (is_qwen2vl or is_qwen25vl or is_llava):
         raise Exception(f"Unknown model_id: {name}")
 
     return is_qwen2vl, is_qwen25vl, is_llava, model, processor 
@@ -146,8 +202,9 @@ def parse_args():
     parser.add_argument("--output_dir", required=True, help="Directory to save the outputs")
     parser.add_argument("--use_think_system_prompt", action="store_true", help="Use system prompt with <think>...</think>")
     parser.add_argument("--use_predefined_cats", action="store_true", help="Use predefined categories in the prompt")
-    parser.add_argument("--max_model_len", type=int, default=4096, help="max_model_len for vLLM")
+    parser.add_argument("--max_model_len", type=int, default=2048, help="max_model_len for vLLM")
     parser.add_argument("--batch_size", type=int, default=1, help="batch size")
+    parser.add_argument("--max_tokens", type=int, default=1024, help="max new tokens")  #ly改
 
     return parser.parse_args()
 
@@ -162,18 +219,31 @@ def main():
     device = f"cuda:{local_rank}"  # each process occupies a GPU
 
     # Get rank and world size for manual splitting
-    rank = torch.distributed.get_rank()  # GPU ID or node rank
-    world_size = torch.distributed.get_world_size()  # Total number of GPUs/nodes
-
+    # rank = torch.distributed.get_rank()  # GPU ID or node rank
+    # world_size = torch.distributed.get_world_size()  # Total number of GPUs/nodes
+    if torch.distributed.is_available() and torch.distributed.is_initialized():   #ly改
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+    else:   #ly改
+        rank = 0
+        world_size = 1
 
     # Load the model and processor.
     is_qwen2vl, is_qwen25vl, is_llava, model, processor = get_model(args.model, device_map=device, max_model_len=args.max_model_len)
-    sampling_params = SamplingParams(
+    # sampling_params = SamplingParams(
+    #     temperature=0.01,
+    #     top_k=1,
+    #     top_p=0.001,
+    #     repetition_penalty=1.0,
+    #     max_tokens=2048,
+    # )
+
+    sampling_params = SamplingParams(   #ly改
         temperature=0.01,
         top_k=1,
         top_p=0.001,
         repetition_penalty=1.0,
-        max_tokens=2048,
+        max_tokens=args.max_tokens,
     )
 
     print(f"model_id: {args.model}", " generation_config:", sampling_params)
