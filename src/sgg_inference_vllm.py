@@ -4,7 +4,7 @@ import re
 import torch
 import glob
 import argparse
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from transformers import AutoProcessor
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
@@ -33,6 +33,10 @@ from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 
 
 from open_r1.trainer.utils.misc import encode_image_to_base64, is_pil_image
+
+# STAR 图像可能非常大，超过 PIL 默认的解码安全像素阈值会触发
+# DecompressionBombError。推理侧最终会对图像做缩放，因此这里放宽该检查。
+Image.MAX_IMAGE_PIXELS = None
 
 SYSTEM_PROMPT = (
     "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
@@ -165,10 +169,20 @@ def replace_answer_format(item: str) -> str:
     return item.replace("<answer>", "```json").replace("</answer>", "```")
 
 def format_data(dataset_name, sample, use_predefined_cats=False, use_think_system_prompt=False, remove_image_size_in_prompt=True):
-    image = sample['image'].convert('RGB')
+    image_obj = sample["image"]
+    # Support either PIL.Image or local image path (string).
+    if hasattr(image_obj, "convert"):
+        image = image_obj.convert("RGB")
+    else:
+        image = Image.open(image_obj).convert("RGB")
     iw, ih = image.size
     if use_predefined_cats:
-        prompt = PROMPT_CLOSE_PSG if 'psg' in dataset_name else PROMPT_CLOSE_VG150
+        # Prefer dataset-provided prompt constraints (e.g., STAR conversion writes `prompt_close`).
+        # Fallback to legacy VG150/PSG predefined templates.
+        if "prompt_close" in sample and sample["prompt_close"]:
+            prompt = sample["prompt_close"]
+        else:
+            prompt = PROMPT_CLOSE_PSG if "psg" in dataset_name else PROMPT_CLOSE_VG150
     else:
         prompt = PROMPT_SG
 
@@ -298,14 +312,22 @@ def main():
 
 
 
-    # Load dataset from Hugging Face hub.
-    dataset = load_dataset(args.dataset)['train']
+    # Load dataset from Hugging Face hub or local disk.
+    # If `args.dataset` is a local folder produced by `datasets.save_to_disk`,
+    # it must be loaded by `load_from_disk` (NOT `load_dataset`).
+    if os.path.isdir(args.dataset) and os.path.exists(os.path.join(args.dataset, "dataset_dict.json")):
+        dataset = load_from_disk(args.dataset)["train"]
+    else:
+        dataset = load_dataset(args.dataset)["train"]
 
     names = glob.glob(args.output_dir + "/*json")
     names = set([e.split('/')[-1].replace('.json', '') for e in tqdm(names)])
     ids = []
     for idx, item in enumerate(tqdm(dataset)):
-        if item['image_id'] in names:
+        im_id = item.get("image_id", item.get("id"))
+        if im_id is None:
+            raise KeyError(f"Dataset example has no `image_id`/`id`. Keys={list(item.keys())}")
+        if im_id in names:
             continue
         ids.append(idx)
     dataset = dataset.select(ids)

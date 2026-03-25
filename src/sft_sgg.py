@@ -52,6 +52,13 @@ from trl import (
 
 from qwen_vl_utils import process_vision_info
 
+# Allow dataset "image" column to be either a PIL.Image or a local image path (string).
+# This avoids relying on HuggingFace `Image` feature embedding during `save_to_disk`.
+from PIL import Image
+
+# 避免超大卫星图触发 PIL DecompressionBombError
+Image.MAX_IMAGE_PIXELS = None
+
 #---------------------- prompt templates ----------------------------
 from open_r1.trainer.utils.prompt_gallery import PROMPT_SG, PROMPT_CLOSE_TEMPLATE, PROMPT_CLOSE_PSG, PROMPT_CLOSE_VG150 
 
@@ -115,7 +122,12 @@ def replace_answer_format(item: str) -> str:
 def format_data(dataset_name, sample, use_predefined_cats=False, remove_image_size_in_prompt=True, shuffle=False):
     """Prepare dataset example for training."""
 
-    image = sample["image"].convert('RGB')
+    image_obj = sample["image"]
+    if hasattr(image_obj, "convert"):
+        image = image_obj.convert("RGB")
+    else:
+        # When dataset is loaded from json/jsonl, `image` is typically a string path.
+        image = Image.open(image_obj).convert("RGB")
     iw, ih = image.size
     if use_predefined_cats:
         if 'prompt_close' in sample:
@@ -144,7 +156,10 @@ def format_data(dataset_name, sample, use_predefined_cats=False, remove_image_si
 
     #normalize box to [0, 1000]
     objs = []
-    for obj in json.loads(sample['objects']):
+    sample_objects = sample["objects"]
+    if isinstance(sample_objects, str):
+        sample_objects = json.loads(sample_objects)
+    for obj in sample_objects:
         box = obj['bbox']
         obj['bbox'] = [int(box[0]/iw*1000), int(box[1]/ih*1000),
                        int(box[2]/iw*1000), int(box[3]/ih*1000)]
