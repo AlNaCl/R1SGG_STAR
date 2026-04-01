@@ -10,6 +10,8 @@ venv/
 # 数据与模型（按需调整）
 datasets/
 data/
+!scripts/data/
+!scripts/data/**
 outputs/
 checkpoints/
 models/
