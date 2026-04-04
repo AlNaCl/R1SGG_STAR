@@ -31,6 +31,7 @@ import torch
 import numpy as np
 import random
 from datasets import load_dataset, load_from_disk
+from PIL import Image as PILImage
 from transformers import AutoProcessor
 
 from trainer import GRPOTrainerV2, GRPOConfig
@@ -820,7 +821,19 @@ def main(script_args, training_args, model_args):
 
     reward_funcs = [reward_funcs_registry[func] for func in script_args.reward_funcs]
 
-    dataset = load_dataset(script_args.dataset_name)['train']
+    # Local DatasetDict from `datasets.save_to_disk` (e.g. STAR jsonl + images)
+    if os.path.isdir(script_args.dataset_name) and os.path.isfile(
+        os.path.join(script_args.dataset_name, "dataset_dict.json")
+    ):
+        ds_disk = load_from_disk(script_args.dataset_name)
+        if "train" not in ds_disk:
+            raise ValueError(
+                f"Local dataset at {script_args.dataset_name} has no 'train' split. "
+                f"Found: {list(ds_disk.keys())}"
+            )
+        dataset = ds_disk["train"]
+    else:
+        dataset = load_dataset(script_args.dataset_name)["train"]
 
     def assign_task_type(example, task_pool, rng):
         example["task_type"] = rng.choice(task_pool)
@@ -866,7 +879,11 @@ def main(script_args, training_args, model_args):
             batch = []
             images, prompts = [], []
             for example in examples:
-                image = example["image"].convert('RGB')
+                raw_img = example["image"]
+                if isinstance(raw_img, str):
+                    image = PILImage.open(raw_img).convert("RGB")
+                else:
+                    image = raw_img.convert("RGB")
                 org_iw, org_ih = image.size
                 images.append(image)
                 if self.use_predefined_cats:

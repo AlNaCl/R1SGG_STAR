@@ -1,6 +1,10 @@
 #!/bin/bash
 
-export HF_HOME=$SCRATCH/huggingface
+# Old paths (deprecated):
+# export HF_HOME=/root/datasets/huggingface
+# export STAR_DATASET_DIR=/root/datasets/STAR
+export HF_HOME="${HF_HOME:-/root/shared-nvme/huggingface}"
+export STAR_DATASET_DIR="${STAR_DATASET_DIR:-/root/shared-nvme/datasets/STAR}"
 # ---------- Environment Setup ----------
 export NCCL_ASYNC_ERROR_HANDLING=1
 export DEBUG_MODE=True

@@ -19,9 +19,7 @@ open_r1/trainer/utils/vllm_client.py
 open_r1/trainer/utils/vllm_client_v2.py
 src/__init__.py
 src/mega_1m_category.py
-src/sft_sgg.py
 src/sgg_gather_preds.py
-src/sgg_inference_vllm.py
 src/vg150_eval.py
 src/vg_synonyms.py
 src/vllm_server_v2.py
