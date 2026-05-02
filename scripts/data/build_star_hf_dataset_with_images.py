@@ -50,11 +50,14 @@ def _build_prompt_close(star_dict_path: Path) -> str:
 def _load_split_jsonl(
     jsonl_path: Path,
     split: str,
-    image_root: Path,
+    image_roots: dict[str, Path],
     prompt_close: str | None,
 ) -> Dataset:
     rows = []
     missing = []
+    moved_cross_split = 0
+    image_root = image_roots[split]
+    fallback_roots = [image_roots[s] for s in ("train", "val", "test") if s != split]
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -64,8 +67,17 @@ def _load_split_jsonl(
             iid = int(ex["image_id"])
             img_path = image_root / f"{iid:04d}.png"
             if not img_path.is_file():
-                missing.append(str(img_path))
-                continue
+                found = None
+                for root in fallback_roots:
+                    candidate = root / f"{iid:04d}.png"
+                    if candidate.is_file():
+                        found = candidate
+                        break
+                if found is None:
+                    missing.append(str(img_path))
+                    continue
+                img_path = found
+                moved_cross_split += 1
             ex["image"] = str(img_path.resolve())
             if prompt_close is not None:
                 ex["prompt_close"] = prompt_close
@@ -76,6 +88,8 @@ def _load_split_jsonl(
             f"[{split}] Missing {len(missing)} image files. First few:\n"
             + "\n".join(missing[:10])
         )
+    if moved_cross_split:
+        print(f"[{split}] Fallback-resolved {moved_cross_split} images from other split folders.")
 
     ds = Dataset.from_list(rows)
     # Store absolute paths as plain strings (small Arrow; grpo Collator opens PIL on the fly).
@@ -125,7 +139,7 @@ def main():
         p = jsonl_dir / f"{split}.jsonl"
         if not p.exists():
             continue
-        splits[split] = _load_split_jsonl(p, split, roots[split], prompt_close)
+        splits[split] = _load_split_jsonl(p, split, roots, prompt_close)
 
     if not splits:
         raise FileNotFoundError(f"No train/val/test jsonl under {jsonl_dir}")
