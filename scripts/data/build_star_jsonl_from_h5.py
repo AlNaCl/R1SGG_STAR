@@ -1,7 +1,8 @@
 import argparse
 import json
+from itertools import zip_longest
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, Iterator, List, Set
 
 import h5py
 
@@ -9,6 +10,81 @@ import h5py
 def _load_json(path: Path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _iter_json_array(path: Path) -> Iterator[dict]:
+    decoder = json.JSONDecoder()
+    chunk_size = 1 << 20
+
+    with open(path, "r", encoding="utf-8") as f:
+        buf = ""
+        pos = 0
+        started = False
+        closed = False
+        eof = False
+
+        while True:
+            if pos >= len(buf):
+                if eof:
+                    break
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    eof = True
+                    continue
+                buf = buf[pos:] + chunk
+                pos = 0
+
+            while pos < len(buf) and buf[pos].isspace():
+                pos += 1
+            if pos >= len(buf):
+                continue
+
+            if not started:
+                started = True
+                if buf[pos] != "[":
+                    raise ValueError(f"Expected '[' at start of {path}")
+                pos += 1
+                continue
+
+            if closed:
+                if not buf[pos].isspace():
+                    raise ValueError(f"Trailing characters after JSON array in {path}")
+                pos += 1
+                continue
+
+            ch = buf[pos]
+            if ch == "]":
+                closed = True
+                pos += 1
+                continue
+            if ch == ",":
+                pos += 1
+                continue
+
+            try:
+                value, end_pos = decoder.raw_decode(buf, pos)
+            except json.JSONDecodeError:
+                if eof:
+                    raise
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    eof = True
+                    continue
+                buf = buf[pos:] + chunk
+                pos = 0
+                continue
+
+            pos = end_pos
+            yield value
+
+            if pos > chunk_size:
+                buf = buf[pos:]
+                pos = 0
+
+        if not started:
+            raise ValueError(f"Expected JSON array in {path}")
+        if not closed:
+            raise ValueError(f"JSON array not closed in {path}")
 
 
 def _build_split_ids_from_h5(
@@ -106,20 +182,12 @@ def main():
     idx_to_label = {int(k): v for k, v in star_dict["idx_to_label"].items()}
     idx_to_predicate = {int(k): v for k, v in star_dict["idx_to_predicate"].items()}
 
-    image_data = _load_json(Path(args.image_data_json))
-    objects_data = _load_json(Path(args.objects_json))
-    rels_data = _load_json(Path(args.relationships_json))
-
-    if not (len(image_data) == len(objects_data) == len(rels_data)):
-        raise ValueError("image_data / objects / relationships length mismatch")
-
-    image_ids = [int(x["image_id"]) for x in image_data]
-
     if args.split_strategy == "from_json":
         if not args.split_json:
             raise ValueError("split_strategy=from_json requires --split_json")
         split_ids = _load_split_ids_from_json(Path(args.split_json))
     else:
+        image_ids = [int(x["image_id"]) for x in _iter_json_array(Path(args.image_data_json))]
         split_ids = _build_split_ids_from_h5(
             Path(args.star_h5), image_ids, args.split_strategy, args.val_ratio
         )
@@ -139,10 +207,19 @@ def main():
     }
 
     try:
-        for i in range(len(image_data)):
-            meta = image_data[i]
-            obj_pack = objects_data[i]
-            rel_pack = rels_data[i]
+        image_iter = _iter_json_array(Path(args.image_data_json))
+        objects_iter = _iter_json_array(Path(args.objects_json))
+        rels_iter = _iter_json_array(Path(args.relationships_json))
+
+        for i, packs in enumerate(
+            zip_longest(image_iter, objects_iter, rels_iter, fillvalue=None)
+        ):
+            meta, obj_pack, rel_pack = packs
+            if meta is None or obj_pack is None or rel_pack is None:
+                raise ValueError(
+                    "image_data / objects / relationships length mismatch "
+                    f"(first mismatch near index {i})"
+                )
             image_id = int(meta["image_id"])
 
             split_name = None
