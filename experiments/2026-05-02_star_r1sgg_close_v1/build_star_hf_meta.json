@@ -1,0 +1,11 @@
+{
+  "jsonl_dir": "/root/autodl-tmp/STAR/r1sgg_data/star_r1sgg_jsonl_closed",
+  "star_object_root": "/root/autodl-tmp/STAR/STAR/STAR-object",
+  "splits": {
+    "train": 560,
+    "val": 140,
+    "test": 573
+  },
+  "add_prompt_close": true,
+  "star_dict": "/root/R1SGG_STAR/datasets/STAR_SGG_Annotation/STAR-SGG-dicts-with-attri.json"
+}

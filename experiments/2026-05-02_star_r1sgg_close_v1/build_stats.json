@@ -1,0 +1,18 @@
+{
+  "train": {
+    "images": 560,
+    "obj": 108052,
+    "rel": 191435
+  },
+  "val": {
+    "images": 140,
+    "obj": 15065,
+    "rel": 22887
+  },
+  "test": {
+    "images": 573,
+    "obj": 96003,
+    "rel": 187044
+  },
+  "dropped_no_split": 0
+}

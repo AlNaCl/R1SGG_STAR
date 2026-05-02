@@ -27,3 +27,11 @@ huggingface/
 *.log
 logs/
 tmp/
+__pycache__/
+*.pyc
+
+# Experiment tracking (keep lightweight records, ignore heavy artifacts)
+experiments/*/run.log
+experiments/*/plots/
+experiments/*/preds.json
+experiments/*/checkpoints/

@@ -1,0 +1,29 @@
+{
+  "train": {
+    "images": 560,
+    "obj_total": 108052,
+    "obj_kept": 108052,
+    "obj_dropped": 0,
+    "rel_total": 191435,
+    "rel_kept": 191435,
+    "rel_dropped": 0
+  },
+  "val": {
+    "images": 140,
+    "obj_total": 15065,
+    "obj_kept": 15065,
+    "obj_dropped": 0,
+    "rel_total": 22887,
+    "rel_kept": 22887,
+    "rel_dropped": 0
+  },
+  "test": {
+    "images": 573,
+    "obj_total": 96003,
+    "obj_kept": 96003,
+    "obj_dropped": 0,
+    "rel_total": 187044,
+    "rel_kept": 187044,
+    "rel_dropped": 0
+  }
+}
