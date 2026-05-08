@@ -25,6 +25,7 @@ from tqdm import tqdm
 import torch
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 import re
 import glob
 from typing import Optional
@@ -629,12 +630,14 @@ def main():
     script_args, training_args, model_args = parser.parse_args_and_config()
 
     # load dataset
-    # Supports both hub datasets and local datasets saved via DatasetDict.save_to_disk.
-    try:
-        train_dataset = load_dataset(script_args.dataset_name)["train"]
-    except Exception:
+    # Prefer local disk format when dataset_name points to a save_to_disk directory.
+    dataset_path = Path(script_args.dataset_name)
+    if dataset_path.exists() and dataset_path.is_dir() and (dataset_path / "dataset_dict.json").exists():
         ds_local = load_from_disk(script_args.dataset_name)
         train_dataset = ds_local["train"] if isinstance(ds_local, DatasetDict) else ds_local
+    else:
+        # Fallback: hub datasets or files handled by load_dataset.
+        train_dataset = load_dataset(script_args.dataset_name)["train"]
 
     print(f"Training set size: {len(train_dataset)}")
     # print(f"Validation set size: {len(val_dataset)}")

@@ -36,12 +36,15 @@ if is_requests_available():
 
 
 if is_vllm_available():
-    from vllm import LLM, SamplingParams
-    from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
-    from vllm.distributed.parallel_state import get_world_group
-    from vllm.distributed.utils import StatelessProcessGroup
-    from vllm.sampling_params import GuidedDecodingParams
-    from vllm.worker.worker import Worker
+    try:
+        from vllm import LLM, SamplingParams
+        from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
+        from vllm.distributed.parallel_state import get_world_group
+        from vllm.distributed.utils import StatelessProcessGroup
+        from vllm.sampling_params import GuidedDecodingParams
+        from vllm.worker.worker import Worker
+    except ImportError:
+        Worker = object
 else:
     Worker = object
 

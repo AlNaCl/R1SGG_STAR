@@ -1116,17 +1116,52 @@ class GRPOTrainerV2(Trainer):
 
             return completion_ids
         else:
-            # Regular generation path
+            # Regular generation path (no vLLM). The sampler already replicated
+            # each prompt num_generations times in `inputs`, so we just need to
+            # construct prompt_inputs from the (already-grouped) inputs.
+            if self.is_qwen2vl:
+                prompts_text = [
+                    maybe_apply_chat_template(ex, self.processing_class)["prompt"]
+                    for ex in inputs
+                ]
+                images = [ex["image"] for ex in inputs]
+                prompt_inputs = self.processing_class(
+                    text=prompts_text,
+                    images=images,
+                    return_tensors="pt",
+                    padding=True,
+                    padding_side="left",
+                    add_special_tokens=False,
+                )
+            else:
+                prompts_text = [
+                    maybe_apply_chat_template(ex, self.processing_class)["prompt"]
+                    for ex in inputs
+                ]
+                prompt_inputs = self.processing_class(
+                    text=prompts_text,
+                    return_tensors="pt",
+                    padding=True,
+                    padding_side="left",
+                    add_special_tokens=False,
+                )
+                if self.max_prompt_length is not None:
+                    prompt_inputs["input_ids"] = prompt_inputs["input_ids"][:, -self.max_prompt_length:]
+                    prompt_inputs["attention_mask"] = prompt_inputs["attention_mask"][:, -self.max_prompt_length:]
+            prompt_inputs = super()._prepare_inputs(prompt_inputs)
+
             with unwrap_model_for_generation(
                 self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation
             ) as unwrapped_model:
                 if self.is_qwen2vl:
                     prompt_completion_ids = unwrapped_model.generate(
-                        **prompt_inputs, 
+                        **prompt_inputs,
                         generation_config=self.generation_config)
                 else:
                     prompt_completion_ids = unwrapped_model.generate(
-                        prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config
+                        prompt_inputs["input_ids"],
+                        attention_mask=prompt_inputs["attention_mask"],
+                        generation_config=self.generation_config,
                     )
             return prompt_completion_ids
 
