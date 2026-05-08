@@ -1019,7 +1019,7 @@ def main(script_args, training_args, model_args):
     if not hasattr(training_args, "model_init_kwargs") or training_args.model_init_kwargs is None:
         training_args.model_init_kwargs = {
             'torch_dtype': torch.bfloat16,
-            'attn_implementation': 'flash_attention_2'
+            'attn_implementation': os.environ.get('STAR_ATTN_IMPL', 'sdpa')
         }
 
     if not hasattr(training_args, "temperature"):

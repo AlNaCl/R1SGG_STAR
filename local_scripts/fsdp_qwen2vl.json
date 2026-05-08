@@ -1,0 +1,4 @@
+{
+  "transformer_layer_cls_to_wrap": ["Qwen2VLDecoderLayer"],
+  "min_num_params": 0
+}

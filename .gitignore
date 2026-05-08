@@ -23,6 +23,10 @@ models/
 .cache/
 huggingface/
 
+# 编辑器与脚本备份
+*.bak
+*.bak.*
+
 # 日志和临时
 *.log
 logs/
