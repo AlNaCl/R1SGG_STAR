@@ -963,6 +963,14 @@ class GRPOTrainerV2(Trainer):
     @profiling_decorator
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         mode = "eval" if self.control.should_evaluate else "train"
+        # Non-vLLM path: bypass cross-micro-batch buffering (which is broken because
+        # _generate_completions does not all-gather completions across processes).
+        # Generate fresh per call; HF Trainer still accumulates gradients across calls.
+        if mode == "train" and not self.use_vllm:
+            completion_ids = self._generate_completions(inputs)
+            inputs = self._score_completions(inputs, completion_ids)
+            self._step += 1
+            return inputs
         if mode == "train":
             accumulate_local_step = self._step % self.args.gradient_accumulation_steps
 
