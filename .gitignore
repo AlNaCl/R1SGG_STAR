@@ -9,9 +9,11 @@ venv/
 
 # 数据与模型（按需调整）
 datasets/
-data/
+/data/
 !scripts/data/
 !scripts/data/**
+!src/data/
+!src/data/**
 outputs/
 checkpoints/
 models/

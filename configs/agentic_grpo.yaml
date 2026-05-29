@@ -61,4 +61,5 @@ rlvr_dataset:
   test_split: test
   task_type: scene_graph
   prompt_field: prompt_close
+  input_style: eagle_grounding
   require_image_exists: true

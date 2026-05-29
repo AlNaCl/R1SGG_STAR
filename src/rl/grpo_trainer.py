@@ -375,6 +375,7 @@ def run_train_smoke(config_path: str | None = None, output_root: str | None = No
         split=split,
         task_type=str(dataset_raw.get("task_type", "scene_graph")),
         prompt_field=str(dataset_raw.get("prompt_field", "prompt_close")),
+        input_style=str(dataset_raw.get("input_style", "legacy")),
         require_image_exists=bool(dataset_raw.get("require_image_exists", True)),
     )
     dataset = load_rlvr_dataset(dataset_cfg, paths=paths)

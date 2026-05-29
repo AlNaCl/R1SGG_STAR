@@ -144,3 +144,42 @@ def test_summarize_rlvr_dataset_reports_counts(tmp_path):
     assert summary["num_rows"] == 1
     assert summary["examples"][0]["num_objects"] == 1
     assert summary["examples"][0]["num_relationships"] == 1
+
+
+def test_jsonl_adapter_builds_eagle_grounding_input(tmp_path):
+    image_path = tmp_path / "0004.png"
+    Image.new("RGB", (64, 48), "white").save(image_path)
+    jsonl_path = tmp_path / "train.jsonl"
+    write_jsonl(
+        jsonl_path,
+        [
+            {
+                "image_id": 4,
+                "width": 64,
+                "height": 48,
+                "image": str(image_path),
+                "prompt_close": "Generate graph",
+                "objects": [{"id": "ship.1", "bbox": [1, 2, 3, 4]}],
+                "relationships": [{"subject": "ship.1", "predicate": "near", "object": "dock.2"}],
+            }
+        ],
+    )
+
+    ds = JsonlRLVRDataset(
+        jsonl_path,
+        split="train",
+        paths=make_paths(tmp_path),
+        input_style="eagle_grounding",
+    )
+    sample = ds[0]
+
+    assert sample["input_style"] == "eagle_grounding"
+    assert sample["base_prompt"] == "Generate graph"
+    assert sample["prompt"].startswith("<image>\n")
+    assert "Image size: 64x48 pixels." in sample["prompt"]
+    assert "zoom_in" in sample["prompt"]
+    assert sample["data"] == [{"type": "image", "image_list": [str(image_path)]}]
+    assert sample["conversations"][0]["from"] == "system"
+    assert sample["conversations"][1]["from"] == "human"
+    assert sample["conversations"][2]["from"] == "gpt"
+    assert "final_answer" in sample["conversations"][2]["value"]
