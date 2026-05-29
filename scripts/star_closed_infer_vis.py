@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run Qwen2-VL (e.g. STAR closed SFT checkpoint) on local HF dataset rows and save images with predicted boxes + labels.
+Run Qwen2-VL or Qwen2.5-VL (e.g. STAR closed SFT checkpoint) on local HF dataset rows and save images with predicted boxes + labels.
 
 Inference uses only image + prompt_close (no GT-driven tiling/subgraph from training collator).
 Images are not resized here to preserve full spatial fidelity; extremely large inputs require enough VRAM (or run elsewhere).
@@ -33,13 +33,23 @@ DEFAULT_VIS_PARENT = "/root/autodl-tmp/STAR/r1sgg_data/eval_visualizations"
 import torch
 from datasets import load_from_disk
 from PIL import Image, ImageDraw, ImageFont
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+from transformers import AutoProcessor
 from tqdm import tqdm
 
 # Repo imports when run from R1SGG_STAR root
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+import importlib.util
+
+_qvl_spec = importlib.util.spec_from_file_location(
+    "qwen_vl_model_load", Path(__file__).resolve().parent / "qwen_vl_model_load.py"
+)
+_qvl_mod = importlib.util.module_from_spec(_qvl_spec)
+assert _qvl_spec.loader is not None
+_qvl_spec.loader.exec_module(_qvl_mod)
+load_qwen_vl_for_inference = _qvl_mod.load_qwen_vl_for_inference
 
 from qwen_vl_utils import process_vision_info
 
@@ -175,13 +185,27 @@ def denorm_box_to_pixels(box, iw: int, ih: int) -> list[int]:
     return [int(round(xa)), int(round(ya)), int(round(xb)), int(round(yb))]
 
 
-def draw_predictions(image: Image.Image, objects: list[dict], out_path: Path) -> None:
+def draw_predictions(
+    image: Image.Image,
+    objects: list[dict],
+    out_path: Path,
+    relationships: list[dict] | None = None,
+    *,
+    max_rel_edges: int = 120,
+) -> None:
+    """Draw predicted boxes; optionally draw relationship edges (subject→object) when `relationships` is non-empty."""
     img = image.convert("RGB").copy()
     draw = ImageDraw.Draw(img)
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
     except OSError:
         font = ImageFont.load_default()
+    try:
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+    except OSError:
+        font_small = font
+
+    id_to_center: dict[str, tuple[int, int]] = {}
     for obj in objects:
         oid = str(obj.get("id", ""))
         bbox = obj.get("bbox")
@@ -196,12 +220,39 @@ def draw_predictions(image: Image.Image, objects: list[dict], out_path: Path) ->
             x2 = min(x1 + 1, img.width - 1)
         if y2 <= y1:
             y2 = min(y1 + 1, img.height - 1)
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        if oid and oid not in id_to_center:
+            id_to_center[oid] = (cx, cy)
         draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
         label = oid[:80]
         tw, th = draw.textbbox((0, 0), label, font=font)[2:]
         bg = [x1, max(0, y1 - th - 2), x1 + tw + 4, y1]
         draw.rectangle(bg, fill="red")
         draw.text((x1 + 2, bg[1] + 1), label, fill="white", font=font)
+
+    if relationships:
+        rel_color = (30, 144, 255)
+        for rel in relationships[:max_rel_edges]:
+            sid = str(rel.get("subject", "")).strip()
+            oid = str(rel.get("object", "")).strip()
+            pred = str(rel.get("predicate", "")).strip()[:40]
+            if not sid or not oid or sid not in id_to_center or oid not in id_to_center:
+                continue
+            p0 = id_to_center[sid]
+            p1 = id_to_center[oid]
+            draw.line([p0, p1], fill=rel_color, width=2)
+            mx = (p0[0] + p1[0]) // 2
+            my = (p0[1] + p1[1]) // 2
+            if pred:
+                draw.text(
+                    (mx, my),
+                    pred,
+                    fill=(255, 255, 255),
+                    font=font_small,
+                    stroke_width=2,
+                    stroke_fill=(0, 0, 0),
+                )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
 
@@ -253,11 +304,8 @@ def main() -> None:
     processor_src = resolve_processor_path(args.model_path, args.processor_path)
     print(f"[star_closed_infer_vis] processor_path={processor_src}")
     processor = AutoProcessor.from_pretrained(processor_src, trust_remote_code=True)
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
+    model = load_qwen_vl_for_inference(
         args.model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda",
-        trust_remote_code=True,
         attn_implementation=args.attn_implementation,
     )
     model.eval()
@@ -320,11 +368,13 @@ def main() -> None:
             payload = extract_answer_content(decoded)
             sg = parse_scene_graph_json(payload)
             objs = sg.get("objects") or []
+            rels = sg.get("relationships") or []
         except Exception as e:
             (raw_dir / f"{stem}.error").write_text(f"{decoded}\n\n{e!r}", encoding="utf-8")
             objs = []
+            rels = []
 
-        draw_predictions(image, objs, vis_dir / f"{stem}.jpg")
+        draw_predictions(image, objs, vis_dir / f"{stem}.jpg", relationships=rels if rels else None)
 
     print(f"Done. Visualizations: {vis_dir}, raw text: {raw_dir}")
 

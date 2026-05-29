@@ -1,0 +1,64 @@
+# Agentic GRPO / RLVR defaults for the STAR closed-vocabulary setup.
+# Paths can be overridden with environment variables of the same names.
+
+data:
+  data_root: ${DATA_ROOT:-/root/autodl-tmp/STAR}
+  r1sgg_data_root: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}
+  star_raw_root: ${STAR_RAW_ROOT:-/root/autodl-tmp/STAR/STAR}
+  dataset_path: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_hf_closed
+  jsonl_closed_dir: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_jsonl_closed
+  split:
+    train: train
+    eval: val
+    test: test
+  use_closed_vocab: true
+
+output:
+  output_root: ${OUTPUT_ROOT:-/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs}
+  subdirs:
+    - logs
+    - checkpoints
+    - predictions
+    - eval_results
+    - tmp
+
+tool:
+  zoom_in:
+    max_tool_steps: 2
+    padding: 0
+    min_crop_size: 1
+    output_size: null
+    observation_format: image_with_metadata
+
+rollout:
+  action_format: json
+  final_action: final_answer
+  tool_action: zoom_in
+
+reward:
+  lambda_format: 0.1
+  lambda_tool: 0.2
+  strict_format: true
+  numeric_tolerance: 0.001
+  scene_graph_triplet_threshold: 1.0
+
+grpo:
+  num_generations: 4
+  clip_eps: 0.2
+  beta_kl: 0.0
+  advantage_eps: 1.0e-8
+  smoke_num_samples: 2
+  smoke_num_generations: 2
+  smoke_train_steps: 1
+  smoke_seq_len: 8
+
+rlvr_dataset:
+  source: hf_closed
+  dataset_path: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_hf_closed
+  jsonl_dir: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_jsonl_closed
+  train_split: train
+  eval_split: val
+  test_split: test
+  task_type: scene_graph
+  prompt_field: prompt_close
+  require_image_exists: true

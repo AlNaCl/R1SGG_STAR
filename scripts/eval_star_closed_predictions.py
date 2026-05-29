@@ -7,9 +7,12 @@ GT object bbox format (STAR): [x, y, w, h] in pixels -> converted to xyxy for Io
 Pred bboxes: use objects_pixel_xyxy from preds.json (already in pixel xyxy).
 
 Metrics (per-image then macro-averaged):
-  - object_recall_iou: fraction of GT objects that have a matched pred with IoU >= threshold (Hungarian one-to-one).
-  - triplet_recall_exact: fraction of GT triplets matched by (matched objects + exact predicate string on pred side).
-  - mean_iou_matched_objects: mean IoU over matched GT-Pred object pairs (IoU >= threshold).
+  - object_recall: fraction of GT objects matched (Hungarian, IoU >= threshold).
+  - object_precision: matched pred objects / all predicted objects (same matching).
+  - macro_f1_object: harmonic mean of macro object recall & precision.
+  - triplet_recall: fraction of GT triplets matched on predicted graph (exact predicate string).
+  - mean_iou_matched: mean IoU over matched object pairs.
+  - parse_success_rate, mean_gt/pred counts: diagnostics from preds.json.
 
 Example:
   python scripts/eval_star_closed_predictions.py \\
@@ -130,7 +133,10 @@ def evaluate_one_image(
     gt_to_pred = {g: (p, iou) for g, p, iou in pairs}
 
     n_gt_obj = len(gt_objs)
+    n_pred_obj = len(pred_objs_px)
     obj_recall = len(gt_to_pred) / n_gt_obj if n_gt_obj else 1.0
+    # One-to-one matches: each matched pred counts once → precision = |pairs| / |pred|
+    obj_precision = len(pairs) / n_pred_obj if n_pred_obj else 1.0
     mean_iou = float(np.mean([iou for _, _, iou in pairs])) if pairs else 0.0
 
     gt_id_to_idx = {o["id"]: i for i, o in enumerate(gt_objs)}
@@ -166,9 +172,11 @@ def evaluate_one_image(
 
     return {
         "n_gt_objects": n_gt_obj,
-        "n_pred_objects": len(pred_objs_px),
+        "n_pred_objects": n_pred_obj,
         "n_gt_relationships": n_gt_rel,
+        "n_pred_relationships": len(pred_rels_raw),
         "object_recall": obj_recall,
+        "object_precision": obj_precision,
         "mean_iou_matched": mean_iou,
         "triplet_recall": triplet_recall,
         "matched_object_pairs": len(pairs),
@@ -207,8 +215,13 @@ def main() -> None:
                     "image_id": im_id,
                     "error": "parse_error",
                     "object_recall": 0.0,
+                    "object_precision": 0.0,
                     "triplet_recall": 0.0,
                     "mean_iou_matched": 0.0,
+                    "n_gt_objects": len(gt_objs),
+                    "n_pred_objects": 0,
+                    "n_gt_relationships": len(gt_rels),
+                    "n_pred_relationships": 0,
                 }
             )
             continue
@@ -220,16 +233,32 @@ def main() -> None:
         vals = [x[key] for x in per_image if key in x and "error" not in x]
         return float(np.mean(vals)) if vals else 0.0
 
+    n_parse_err = sum(1 for x in per_image if x.get("error") == "parse_error")
+    ok = [x for x in per_image if "error" not in x]
+
     summary = {
         "dataset_path": str(Path(args.dataset_path).resolve()),
         "split": args.split,
         "preds_json": str(Path(args.preds_json).resolve()),
         "iou_threshold": args.iou_threshold,
         "n_images_evaluated": len(per_image),
+        "n_parse_errors": n_parse_err,
+        "parse_success_rate": float((len(per_image) - n_parse_err) / len(per_image)) if per_image else 0.0,
         "preds_meta": meta,
         "macro_object_recall": mean_safe("object_recall"),
+        "macro_object_precision": mean_safe("object_precision"),
         "macro_triplet_recall": mean_safe("triplet_recall"),
         "macro_mean_iou_matched": mean_safe("mean_iou_matched"),
+        "macro_f1_object": float(
+            2
+            * mean_safe("object_recall")
+            * mean_safe("object_precision")
+            / (mean_safe("object_recall") + mean_safe("object_precision") + 1e-12)
+        ),
+        "mean_gt_objects": float(np.mean([x["n_gt_objects"] for x in ok])) if ok else 0.0,
+        "mean_pred_objects": float(np.mean([x["n_pred_objects"] for x in ok])) if ok else 0.0,
+        "mean_gt_relationships": float(np.mean([x["n_gt_relationships"] for x in ok])) if ok else 0.0,
+        "mean_pred_relationships": float(np.mean([x["n_pred_relationships"] for x in ok])) if ok else 0.0,
         "per_image": per_image,
     }
 

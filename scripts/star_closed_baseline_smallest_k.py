@@ -30,11 +30,19 @@ import torch
 from datasets import load_from_disk
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+from transformers import AutoProcessor
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+_qvl_spec = importlib.util.spec_from_file_location(
+    "qwen_vl_model_load", Path(__file__).resolve().parent / "qwen_vl_model_load.py"
+)
+_qvl_mod = importlib.util.module_from_spec(_qvl_spec)
+assert _qvl_spec.loader is not None
+_qvl_spec.loader.exec_module(_qvl_mod)
+load_qwen_vl_for_inference = _qvl_mod.load_qwen_vl_for_inference
 
 from qwen_vl_utils import process_vision_info
 
@@ -174,11 +182,8 @@ def main() -> None:
     print(f"[baseline] split={args.split} n={len(ds)} using_smallest_k={len(indices)} areas[:5]={areas[:5]}")
 
     processor = AutoProcessor.from_pretrained(processor_src, trust_remote_code=True)
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
+    model = load_qwen_vl_for_inference(
         args.model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda",
-        trust_remote_code=True,
         attn_implementation=args.attn_implementation,
     )
     model.eval()
@@ -321,7 +326,12 @@ def main() -> None:
 
         if parse_error is None:
             # objs_raw bbox is relative to the image passed to the model (`image`, infer size).
-            draw_predictions(image, objs_raw, vis_dir / f"{stem}.jpg")
+            draw_predictions(
+                image,
+                objs_raw,
+                vis_dir / f"{stem}.jpg",
+                relationships=rels_raw if rels_raw else None,
+            )
         else:
             err_body = decoded if decoded else ""
             (raw_dir / f"{stem}.error").write_text(f"{err_body}\n\n{parse_error}", encoding="utf-8")
