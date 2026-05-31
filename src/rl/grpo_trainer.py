@@ -207,11 +207,37 @@ def _toy_generator_factory(outputs: list[str]) -> Callable[[list[dict[str, Any]]
     return generate
 
 
+def _non_overwriting_path(path: Path, *, run_id: str | None = None) -> Path:
+    """Return ``path`` or a timestamp-suffixed variant that does not exist."""
+
+    if not path.exists():
+        return path
+    from datetime import datetime
+
+    stamp = run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S_%fZ")
+    for idx in range(1000):
+        suffix = f"_{stamp}" if idx == 0 else f"_{stamp}_{idx}"
+        candidate = path.with_name(f"{path.stem}{suffix}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(f"could not find non-overwriting path for {path}")
+
+
+def _write_json_no_overwrite(path: Path, payload: dict[str, Any], *, run_id: str | None = None) -> Path:
+    """Write JSON with exclusive create semantics and return the actual path."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    candidate = _non_overwriting_path(path, run_id=run_id)
+    with candidate.open("x", encoding="utf-8") as f:
+        import json
+
+        json.dump(payload, f, indent=2)
+    return candidate
+
+
 def run_dry_run(config_path: str | None = None, output_root: str | None = None) -> dict[str, Any]:
     """Run a tiny rollout + reward + GRPO loss + backward smoke test."""
 
-    from pathlib import Path
-    import json
     import os
 
     from PIL import Image
@@ -331,8 +357,7 @@ def run_dry_run(config_path: str | None = None, output_root: str | None = None) 
         "invalid_bbox_rate": sum(1 for r in rollout_results if r.reward["invalid_bbox"]) / len(rollout_results),
         "mean_trajectory_length": sum(r.trajectory["num_steps"] for r in rollout_results) / len(rollout_results),
     }
-    log_path = paths.output_root / "logs" / "dry_run_agentic_grpo.json"
-    log_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    log_path = _write_json_no_overwrite(paths.output_root / "logs" / "dry_run_agentic_grpo.json", summary)
     summary["log_path"] = str(log_path)
     return summary
 
@@ -351,7 +376,6 @@ def run_train_smoke(config_path: str | None = None, output_root: str | None = No
     log writing, and checkpoint writing without loading a large policy model.
     """
 
-    import json
     import os
     from datetime import datetime
 
@@ -434,9 +458,9 @@ def run_train_smoke(config_path: str | None = None, output_root: str | None = No
             }
         )
 
-    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%SZ")
-    ckpt_dir = paths.output_root / "checkpoints" / f"agentic_grpo_smoke_{run_id}"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%fZ")
+    ckpt_dir = _non_overwriting_path(paths.output_root / "checkpoints" / f"agentic_grpo_smoke_{run_id}", run_id=run_id)
+    ckpt_dir.mkdir(parents=True, exist_ok=False)
     ckpt_path = ckpt_dir / "toy_policy.pt"
     torch.save(
         {
@@ -462,12 +486,22 @@ def run_train_smoke(config_path: str | None = None, output_root: str | None = No
         "loss_history": loss_history,
         "checkpoint_path": str(ckpt_path),
     }
-    log_path = paths.output_root / "logs" / f"train_smoke_agentic_grpo_{run_id}.json"
+    log_path = _write_json_no_overwrite(
+        paths.output_root / "logs" / f"train_smoke_agentic_grpo_{run_id}.json",
+        summary,
+        run_id=run_id,
+    )
     latest_path = paths.output_root / "logs" / "train_smoke_agentic_grpo_latest.json"
-    log_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    latest_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    latest_log_path = None
+    latest_log_skipped = False
+    try:
+        latest_log_path = _write_json_no_overwrite(latest_path, summary, run_id=run_id)
+        latest_log_skipped = latest_log_path != latest_path
+    except FileExistsError:
+        latest_log_skipped = True
     summary["log_path"] = str(log_path)
-    summary["latest_log_path"] = str(latest_path)
+    summary["latest_log_path"] = str(latest_log_path) if latest_log_path is not None else None
+    summary["latest_log_skipped"] = latest_log_skipped
     return summary
 
 def main(argv: list[str] | None = None) -> None:

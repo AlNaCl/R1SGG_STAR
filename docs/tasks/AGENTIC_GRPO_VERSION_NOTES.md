@@ -48,6 +48,14 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - Train-smoke checkpoint: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/*/toy_policy.pt`
 - Train-smoke 检查点：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/*/toy_policy.pt`
 
+## Output Safety Update / 输出安全更新
+
+- Date / 日期: 2026-05-31
+- Dry-run and train-smoke logs/checkpoints now use non-overwriting paths. If the default file or directory already exists, the runner writes a timestamp-suffixed path instead of replacing existing output.
+- dry-run 和 train-smoke 的日志/检查点现在使用非覆盖路径。如果默认文件或目录已存在，运行器会写入带时间戳后缀的新路径，而不是替换已有输出。
+- `train_smoke_agentic_grpo_latest.json` is created only when that exact path is free; otherwise a suffixed non-overwriting path is reported in the run summary.
+- `train_smoke_agentic_grpo_latest.json` 仅在该路径未占用时创建；否则运行摘要会报告一个带后缀的非覆盖路径。
+
 ## Known Limitations / 已知限制
 
 - Full Qwen-VL policy loading and real Agentic GRPO training are not implemented in this scaffold snapshot.
