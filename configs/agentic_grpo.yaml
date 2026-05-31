@@ -52,6 +52,23 @@ grpo:
   smoke_train_steps: 1
   smoke_seq_len: 8
 
+model:
+  name_or_path: ${MODEL_NAME_OR_PATH:-/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z}
+  processor_path: ${PROCESSOR_PATH:-}
+  attn_implementation: ${ATTN_IMPLEMENTATION:-sdpa}
+  torch_dtype: ${TORCH_DTYPE:-bfloat16}
+  device_map: ${DEVICE_MAP:-cuda}
+  max_pixels: null
+  min_pixels: null
+
+model_load_smoke:
+  split: val
+  sample_index: 0
+  load_model: true
+  build_inputs: true
+  max_pixels: 802816
+  min_pixels: null
+
 rlvr_dataset:
   source: hf_closed
   dataset_path: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_hf_closed

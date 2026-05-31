@@ -56,10 +56,18 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - `train_smoke_agentic_grpo_latest.json` is created only when that exact path is free; otherwise a suffixed non-overwriting path is reported in the run summary.
 - `train_smoke_agentic_grpo_latest.json` 仅在该路径未占用时创建；否则运行摘要会报告一个带后缀的非覆盖路径。
 
+## Model Load Smoke Update / 模型加载冒烟验证更新
+
+- Date / 日期: 2026-05-31
+- Added a no-training model-load smoke path for Agentic GRPO. It loads one STAR RLVR sample, converts the Eagle-style prompt to Qwen-VL messages, builds processor inputs, and optionally loads the configured Qwen-VL model without forward/backward or checkpoint writes.
+- 新增 Agentic GRPO 的无训练模型加载冒烟路径：读取一条 STAR RLVR 样本，将 Eagle-style prompt 转成 Qwen-VL messages，构造 processor 输入，并可选加载配置的 Qwen-VL 模型；不执行 forward/backward，也不写 checkpoint。
+- Verified locally with `/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z`; output log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/model_load_smoke_20260531_101552_419549Z.json`.
+- 已使用本地 checkpoint `/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z` 验证；输出日志为 `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/model_load_smoke_20260531_101552_419549Z.json`。
+
 ## Known Limitations / 已知限制
 
-- Full Qwen-VL policy loading and real Agentic GRPO training are not implemented in this scaffold snapshot.
-- 本脚手架快照尚未实现完整 Qwen-VL policy 加载和真实 Agentic GRPO 训练。
+- Full Qwen-VL policy integration into the real Agentic GRPO training loop is not implemented in this scaffold snapshot. The current model-load path is a no-training smoke test.
+- 本脚手架快照尚未将完整 Qwen-VL policy 接入真实 Agentic GRPO 训练循环；当前模型加载路径只是无训练冒烟验证。
 
 - The train-smoke path uses a tiny toy parameter/checkpoint to verify dataset loading, loss computation, backward, optimizer step, logging, and checkpoint writing.
 - train-smoke 路径使用极小 toy 参数和检查点，仅验证数据加载、loss 计算、反向传播、优化器步骤、日志和检查点写入。
