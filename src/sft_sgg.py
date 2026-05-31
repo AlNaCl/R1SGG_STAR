@@ -401,6 +401,25 @@ def format_answer(objects:str, relationships:str, shuffle=False):
 def replace_answer_format(item: str) -> str:
     return item.replace("<answer>", "```json").replace("</answer>", "```")
 
+
+def _load_train_dataset(dataset_name: str):
+    dataset_path = Path(dataset_name)
+    if dataset_path.exists() and dataset_path.is_dir() and (dataset_path / "dataset_dict.json").exists():
+        ds_local = load_from_disk(dataset_name)
+        return ds_local["train"] if isinstance(ds_local, DatasetDict) else ds_local
+    if dataset_path.exists() and dataset_path.is_file() and dataset_path.suffix.lower() in {".json", ".jsonl"}:
+        return load_dataset("json", data_files={"train": str(dataset_path)})["train"]
+    return load_dataset(dataset_name)["train"]
+
+
+def _messages_from_dataset(example):
+    messages = example.get("messages")
+    if not messages:
+        raise ValueError("use_dataset_messages=True requires each sample to contain a non-empty messages field")
+    if isinstance(messages, str):
+        messages = json.loads(messages)
+    return messages
+
 def format_data(
     dataset_name,
     sample,
@@ -556,6 +575,10 @@ class CustomScriptArguments(ScriptArguments):
         default=None,
         metadata={"help": "Maximum number of pixels for the image. Set <=0 or unset to disable explicit cap."},
     )
+    use_dataset_messages: bool = field(
+        default=False,
+        metadata={"help": "Use prebuilt Qwen-style messages from the dataset instead of rebuilding legacy SGG targets."},
+    )
     min_pixels: Optional[int] = field(
         default=None,
         metadata={"help": "Minimum number of pixels for the image. Set <=0 or unset to disable explicit floor."},
@@ -630,14 +653,7 @@ def main():
     script_args, training_args, model_args = parser.parse_args_and_config()
 
     # load dataset
-    # Prefer local disk format when dataset_name points to a save_to_disk directory.
-    dataset_path = Path(script_args.dataset_name)
-    if dataset_path.exists() and dataset_path.is_dir() and (dataset_path / "dataset_dict.json").exists():
-        ds_local = load_from_disk(script_args.dataset_name)
-        train_dataset = ds_local["train"] if isinstance(ds_local, DatasetDict) else ds_local
-    else:
-        # Fallback: hub datasets or files handled by load_dataset.
-        train_dataset = load_dataset(script_args.dataset_name)["train"]
+    train_dataset = _load_train_dataset(script_args.dataset_name)
 
     print(f"Training set size: {len(train_dataset)}")
     # print(f"Validation set size: {len(val_dataset)}")
@@ -677,25 +693,31 @@ def main():
     training_args.model_init_kwargs = model_kwargs
 
 
-    model_type=None
+    model_type = None
     base_name = None
     model_name = model_args.model_name_or_path.lower()
+    config_model_type = ""
+    config_path = Path(model_args.model_name_or_path) / "config.json"
+    if config_path.is_file():
+        try:
+            config_model_type = str(json.loads(config_path.read_text(encoding="utf-8")).get("model_type", "")).lower()
+        except json.JSONDecodeError:
+            config_model_type = ""
+    model_type_hint = f"{model_name} {config_model_type}"
 
-    if any(key in model_name for key in ['qwen2vl', 'qwen2-vl', 'qwen-2-vl']):
-        model_type = "qwen2vl"
-        if '7b' in model_name:
-            base_name = "Qwen/Qwen2-VL-7B-Instruct"
-        elif '2b' in model_name:
-            base_name = "Qwen/Qwen2-VL-2B-Instruct"
-        else:
-            raise Exception(f"Unknown model size in: {model_name}")
-
-    elif any(key in model_name for key in ['qwen2.5vl', 'qwen2.5-vl', 'qwen2-5-vl', 'qwen-2.5-vl']):
+    if any(key in model_type_hint for key in ['qwen2_5_vl', 'qwen25vl', 'qwen2.5vl', 'qwen2.5-vl', 'qwen2-5-vl', 'qwen-2.5-vl']):
         model_type = "qwen2.5vl"
-        if '7b' in model_name:
-            base_name = "Qwen/Qwen2.5-VL-7B-Instruct"
-        elif '3b' in model_name:
+        if '3b' in model_type_hint:
             base_name = "Qwen/Qwen2.5-VL-3B-Instruct"
+        else:
+            base_name = "Qwen/Qwen2.5-VL-7B-Instruct"
+
+    elif any(key in model_type_hint for key in ['qwen2_vl', 'qwen2vl', 'qwen2-vl', 'qwen-2-vl']):
+        model_type = "qwen2vl"
+        if '7b' in model_type_hint:
+            base_name = "Qwen/Qwen2-VL-7B-Instruct"
+        elif '2b' in model_type_hint:
+            base_name = "Qwen/Qwen2-VL-2B-Instruct"
         else:
             raise Exception(f"Unknown model size in: {model_name}")
 
@@ -734,6 +756,7 @@ def main():
             dataset_name,
             processor,
             use_predefined_cats,
+            use_dataset_messages,
             max_length,
             max_objects,
             max_relationships,
@@ -753,6 +776,7 @@ def main():
             self.dataset_name = dataset_name
             self.processor = processor
             self.use_predefined_cats = use_predefined_cats
+            self.use_dataset_messages = use_dataset_messages
             self._db = {}
             self.max_length = max_length
             self.max_objects = max_objects
@@ -781,27 +805,30 @@ def main():
                 sample_uid = _stable_sample_uid(example)
                 rng = _build_deterministic_rng(self.subgraph_seed, sample_uid, visit_idx)
                 shuffle = (visit_idx > 0) and (rng.random() > 0.5)
-                format_example = format_data(
-                    self.dataset_name,
-                    example,
-                    use_predefined_cats=self.use_predefined_cats,
-                    shuffle=shuffle,
-                    max_objects=self.max_objects,
-                    max_relationships=self.max_relationships,
-                    random_subgraph_sampling=self.random_subgraph_sampling,
-                    rng=rng,
-                    adaptive_image_resize=self.adaptive_image_resize,
-                    adaptive_risk_max_pixels=self.adaptive_risk_max_pixels,
-                    adaptive_risk_pixels_threshold=self.adaptive_risk_pixels_threshold,
-                    adaptive_risk_complexity_threshold=self.adaptive_risk_complexity_threshold,
-                    adaptive_tile_risky_sample=self.adaptive_tile_risky_sample,
-                    force_tile_all_samples=self.force_tile_all_samples,
-                    adaptive_tile_max_pixels=self.adaptive_tile_max_pixels,
-                    adaptive_tile_overlap_ratio=self.adaptive_tile_overlap_ratio,
-                    sample_visit=visit_idx,
-                    adaptive_tile_min_objects=self.adaptive_tile_min_objects,
-                    adaptive_tile_max_trials=self.adaptive_tile_max_trials,
-                )["messages"]
+                if self.use_dataset_messages:
+                    format_example = _messages_from_dataset(example)
+                else:
+                    format_example = format_data(
+                        self.dataset_name,
+                        example,
+                        use_predefined_cats=self.use_predefined_cats,
+                        shuffle=shuffle,
+                        max_objects=self.max_objects,
+                        max_relationships=self.max_relationships,
+                        random_subgraph_sampling=self.random_subgraph_sampling,
+                        rng=rng,
+                        adaptive_image_resize=self.adaptive_image_resize,
+                        adaptive_risk_max_pixels=self.adaptive_risk_max_pixels,
+                        adaptive_risk_pixels_threshold=self.adaptive_risk_pixels_threshold,
+                        adaptive_risk_complexity_threshold=self.adaptive_risk_complexity_threshold,
+                        adaptive_tile_risky_sample=self.adaptive_tile_risky_sample,
+                        force_tile_all_samples=self.force_tile_all_samples,
+                        adaptive_tile_max_pixels=self.adaptive_tile_max_pixels,
+                        adaptive_tile_overlap_ratio=self.adaptive_tile_overlap_ratio,
+                        sample_visit=visit_idx,
+                        adaptive_tile_min_objects=self.adaptive_tile_min_objects,
+                        adaptive_tile_max_trials=self.adaptive_tile_max_trials,
+                    )["messages"]
                 self._db[str(example)] += 1
 
                 text = self.processor.apply_chat_template(format_example, tokenize=False)
@@ -872,6 +899,7 @@ def main():
             script_args.dataset_name,
             processor,
             script_args.use_predefined_cats,
+            script_args.use_dataset_messages,
             max_length=tokenizer_max_len,
             max_objects=script_args.max_objects,
             max_relationships=script_args.max_relationships,

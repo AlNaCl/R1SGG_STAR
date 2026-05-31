@@ -74,6 +74,18 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - Successful log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260531_104009_952634Z.json`.
 - 成功日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260531_104009_952634Z.json`。
 
+## Action-Format SFT Warmup Update / Action 格式 SFT 预热更新
+
+- Date / 日期: 2026-05-31
+- Added an action-format SFT dataset builder that exports STAR/RLVR samples as Qwen-style `messages` with `final_answer` JSON actions. The HF `save_to_disk` export stores nested fields as JSON strings for Arrow compatibility.
+- 新增 action-format SFT 数据构建器，将 STAR/RLVR 样本导出为 Qwen-style `messages`，目标输出为 `final_answer` JSON action；HF `save_to_disk` 版本会将嵌套字段存为 JSON 字符串以兼容 Arrow。
+- Updated `src/sft_sgg.py` to optionally consume prebuilt dataset `messages` through `--use_dataset_messages true`, instead of rebuilding the legacy fenced scene-graph target.
+- 更新 `src/sft_sgg.py`，支持通过 `--use_dataset_messages true` 直接使用数据集中的预构建 `messages`，不再强制重建旧 fenced scene-graph target。
+- Built a 32-sample short-subgraph warmup dataset: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260531_115430_765141Z/hf_dataset`.
+- 已构建 32 条短子图 warmup 数据：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260531_115430_765141Z/hf_dataset`。
+- Completed a 1-step LoRA action-format SFT smoke. Output adapter checkpoint: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_smoke_20260531_120351Z`. Final smoke metrics: loss `0.7815`, grad_norm `0.3373`, mean_token_accuracy `0.8819`.
+- 已完成 1-step LoRA action-format SFT smoke。输出 adapter checkpoint：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_smoke_20260531_120351Z`。最终 smoke 指标：loss `0.7815`，grad_norm `0.3373`，mean_token_accuracy `0.8819`。
+
 ## Known Limitations / 已知限制
 
 - Full Qwen-VL policy integration into the real Agentic GRPO training loop is not implemented in this scaffold snapshot. The current model-load path is a no-training smoke test.
