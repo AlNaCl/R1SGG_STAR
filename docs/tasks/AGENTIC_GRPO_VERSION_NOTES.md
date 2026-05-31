@@ -64,6 +64,16 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - Verified locally with `/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z`; output log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/model_load_smoke_20260531_101552_419549Z.json`.
 - 已使用本地 checkpoint `/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z` 验证；输出日志为 `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/model_load_smoke_20260531_101552_419549Z.json`。
 
+## Generation Smoke Update / 生成冒烟验证更新
+
+- Date / 日期: 2026-05-31
+- Added a no-training generation smoke path for one STAR RLVR sample. It loads the configured Qwen-VL model, generates one JSON action, runs at most one `zoom_in`, appends the crop observation, and optionally generates a final answer.
+- 新增单样本无训练生成冒烟路径：加载配置的 Qwen-VL 模型，生成一个 JSON action，最多执行一次 `zoom_in`，追加 crop observation，并可选生成 final answer。
+- Real checkpoint result: raw dataset prompt mode exposed the current mismatch by reverting to long legacy scene-graph output; `action_only` prompt mode produced valid `zoom_in` and `final_answer` actions.
+- 真实 checkpoint 结果：原始数据集 prompt 会回退到很长的旧 scene-graph 输出，暴露当前格式不匹配；`action_only` prompt mode 可生成有效的 `zoom_in` 和 `final_answer` action。
+- Successful log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260531_104009_952634Z.json`.
+- 成功日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260531_104009_952634Z.json`。
+
 ## Known Limitations / 已知限制
 
 - Full Qwen-VL policy integration into the real Agentic GRPO training loop is not implemented in this scaffold snapshot. The current model-load path is a no-training smoke test.

@@ -69,6 +69,20 @@ model_load_smoke:
   max_pixels: 802816
   min_pixels: null
 
+generation_smoke:
+  max_new_tokens: 128
+  repetition_penalty: 1.05
+  do_sample: false
+  temperature: null
+  max_zoom_steps: 1
+  coord_type: pixel
+  zoom_output_size: 448
+  zoom_min_area_ratio: 1.0e-6
+  zoom_max_area_ratio: 0.8
+  strict_format: false
+  action_reminder: true
+  prompt_mode: action_only
+
 rlvr_dataset:
   source: hf_closed
   dataset_path: ${R1SGG_DATA_ROOT:-/root/autodl-tmp/STAR/r1sgg_data}/star_r1sgg_hf_closed
