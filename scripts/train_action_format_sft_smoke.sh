@@ -21,6 +21,8 @@ DATASET_NAME=${DATASET_NAME:-}
 MAX_SAMPLES=${MAX_SAMPLES:-32}
 MAX_OBJECTS=${MAX_OBJECTS:-16}
 MAX_RELATIONSHIPS=${MAX_RELATIONSHIPS:-32}
+PROMPT_MODE=${PROMPT_MODE:-action_content}
+TARGET_MODE=${TARGET_MODE:-mixed_scene_graph}
 MAX_STEPS=${MAX_STEPS:-1}
 MAX_PIXELS=${MAX_PIXELS:-802816}
 MAX_TOKEN_LENGTH=${MAX_TOKEN_LENGTH:-2048}
@@ -35,7 +37,7 @@ LORA_DROPOUT=${LORA_DROPOUT:-0.05}
 LORA_TARGET_MODULES=${LORA_TARGET_MODULES:-q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj}
 
 if [[ -z "${DATASET_NAME}" ]]; then
-  build_json=$(MAX_SAMPLES="${MAX_SAMPLES}" MAX_OBJECTS="${MAX_OBJECTS}" MAX_RELATIONSHIPS="${MAX_RELATIONSHIPS}" PROMPT_MODE=dataset bash scripts/build_action_sft_dataset.sh)
+  build_json=$(MAX_SAMPLES="${MAX_SAMPLES}" MAX_OBJECTS="${MAX_OBJECTS}" MAX_RELATIONSHIPS="${MAX_RELATIONSHIPS}" PROMPT_MODE="${PROMPT_MODE}" TARGET_MODE="${TARGET_MODE}" bash scripts/build_action_sft_dataset.sh)
   echo "${build_json}"
   DATASET_NAME=$(python -c 'import json,sys; print(json.load(sys.stdin)["hf_dataset_path"])' <<<"${build_json}")
 fi
@@ -56,4 +58,4 @@ if [[ "${USE_PEFT}" == "true" ]]; then
   PEFT_ARGS+=(--use_peft true --lora_r "${LORA_R}" --lora_alpha "${LORA_ALPHA}" --lora_dropout "${LORA_DROPOUT}" --lora_target_modules "${LORA_TARGET_ARRAY[@]}")
 fi
 
-python src/sft_sgg.py   --model_name_or_path "${MODEL_NAME_OR_PATH}"   --dataset_name "${DATASET_NAME}"   --use_dataset_messages true   --learning_rate 5e-6   --per_device_train_batch_size 1   --gradient_accumulation_steps 1   --warmup_ratio 0.0   --max_grad_norm 0.3   --logging_steps 1   --dataloader_num_workers 0   --dataloader_pin_memory false   --bf16 true   --tf32 true   --report_to "${REPORT_TO}"   --attn_implementation "${ATTN_IMPL}"   --max_pixels "${MAX_PIXELS}"   --max_token_length "${MAX_TOKEN_LENGTH}"   --adaptive_image_resize false   --adaptive_tile_risky_sample false   --remove_unused_columns false   --num_train_epochs 1   --max_steps "${MAX_STEPS}"   --save_steps "${MAX_STEPS}"   --save_only_model true   --torch_dtype bfloat16   "${PEFT_ARGS[@]}"   --run_name "${RUN_NAME}"   --output_dir "${OUTPUT_DIR}"   --seed 42
+python src/sft_sgg.py   --model_name_or_path "${MODEL_NAME_OR_PATH}"   --dataset_name "${DATASET_NAME}"   --use_dataset_messages true   --train_on_assistant_only true   --learning_rate 5e-6   --per_device_train_batch_size 1   --gradient_accumulation_steps 1   --warmup_ratio 0.0   --max_grad_norm 0.3   --logging_steps 1   --dataloader_num_workers 0   --dataloader_pin_memory false   --bf16 true   --tf32 true   --report_to "${REPORT_TO}"   --attn_implementation "${ATTN_IMPL}"   --max_pixels "${MAX_PIXELS}"   --max_token_length "${MAX_TOKEN_LENGTH}"   --adaptive_image_resize false   --adaptive_tile_risky_sample false   --remove_unused_columns false   --num_train_epochs 1   --max_steps "${MAX_STEPS}"   --save_steps "${MAX_STEPS}"   --save_only_model true   --torch_dtype bfloat16   "${PEFT_ARGS[@]}"   --run_name "${RUN_NAME}"   --output_dir "${OUTPUT_DIR}"   --seed 42

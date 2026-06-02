@@ -108,6 +108,36 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - Batch conclusion: the 100-step adapter remains worse than base on action-format stability (`valid_json_rate -0.10`, `extra_text_rate +0.10`), so neither 500-step SFT expansion nor GRPO should be launched from this adapter yet.
 - Batch 结论：100-step adapter 在 action-format 稳定性上仍弱于 base（`valid_json_rate -0.10`，`extra_text_rate +0.10`），因此暂不应基于该 adapter 启动 500-step SFT 扩大训练或 GRPO。
 
+## Fixed Format-Only Warmup Update / 修复版格式预热更新
+
+- Date / 日期: 2026-06-02
+- Fixed the action-format warmup target mismatch by adding `target_mode=format_only`, switching the default warmup config to `prompt_mode=action_only` + `target_mode=format_only`, and letting `scripts/build_action_sft_dataset.sh` pass `TARGET_MODE` when provided.
+- 通过新增 `target_mode=format_only`、将默认 warmup 配置切到 `prompt_mode=action_only` + `target_mode=format_only`、并让 `scripts/build_action_sft_dataset.sh` 支持传入 `TARGET_MODE`，修复 action-format warmup 的提示和目标不一致问题。
+- Updated `src/sft_sgg.py` so SFT labels can mask system/user prompt tokens through `--train_on_assistant_only true`; only assistant response tokens contribute to the SFT loss.
+- 更新 `src/sft_sgg.py`，支持通过 `--train_on_assistant_only true` mask system/user prompt token；SFT loss 只作用在 assistant response token 上。
+- Built a 32-sample fixed format-only warmup dataset: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260602_041337_392056Z/hf_dataset`. First target length was 93 chars with empty `objects` and `relationships`, matching the generation smoke target.
+- 已构建 32 条修复版 format-only warmup 数据：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260602_041337_392056Z/hf_dataset`。首条 target 长度为 93 字符，`objects` 和 `relationships` 为空，和 generation smoke 目标一致。
+- Completed a fixed 100-step LoRA warmup. Output adapter: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_fixed_100step_20260602_121200Z`. Final train metrics: `train_loss=0.1602`; last logged steps reached `mean_token_accuracy=1.0`.
+- 已完成修复版 100-step LoRA warmup。输出 adapter：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_fixed_100step_20260602_121200Z`。最终训练指标：`train_loss=0.1602`；最后若干步 `mean_token_accuracy=1.0`。
+- Re-ran 20-sample base-vs-fixed-adapter generation smoke on `val` indices 0-19. Log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_batch_smoke.json`. Base metrics: `valid_json_rate=0.40`, `extra_text_rate=0.60`, `final_answer_valid_rate=0.25`, `mean_reward=0.0400`. Fixed adapter metrics: `valid_json_rate=1.00`, `extra_text_rate=0.00`, `final_answer_valid_rate=1.00`, `mean_reward=0.1000`.
+- 已在 `val` indices 0-19 上重新运行 20 样本 base-vs-fixed-adapter generation smoke。日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_batch_smoke.json`。Base 指标：`valid_json_rate=0.40`，`extra_text_rate=0.60`，`final_answer_valid_rate=0.25`，`mean_reward=0.0400`。修复版 adapter 指标：`valid_json_rate=1.00`，`extra_text_rate=0.00`，`final_answer_valid_rate=1.00`，`mean_reward=0.1000`。
+- Conclusion: the format-only warmup now fixes raw JSON action stability, but it intentionally collapses to immediate empty `final_answer` and does not learn `zoom_in` or scene-graph content. Do not launch GRPO from this adapter as a task policy yet; next add mixed tool-use/content targets or a separate action+content warmup before any GRPO pilot.
+- 结论：format-only warmup 现在修复了 raw JSON action 稳定性，但它会按目标直接输出空 `final_answer`，尚未学习 `zoom_in` 或 scene graph 内容。因此暂不应把该 adapter 作为任务策略启动 GRPO；下一步应加入 tool-use/content 混合目标，或单独做 action+content warmup，再考虑 GRPO pilot。
+
+## No-GPU Action+Content Warmup Prep / 无 GPU Action+Content 预热准备
+
+- Date / 日期: 2026-06-02
+- Added `action_content` prompts plus `zoom_then_scene_graph` and `mixed_scene_graph` action SFT target modes. The new content targets emit compact scene-graph JSON with `id` and pixel-space xyxy `bbox` only.
+- 新增 `action_content` prompt，以及 `zoom_then_scene_graph` 和 `mixed_scene_graph` 两种 action SFT 目标模式。新的内容目标输出紧凑 scene graph JSON，仅保留 `id` 和像素坐标 xyxy `bbox`。
+- Fixed STAR bbox handling for action SFT export: source object boxes are xywh, so they are normalized to xyxy before final_answer and zoom target generation.
+- 修复 action SFT 导出中的 STAR bbox 处理：源 object box 为 xywh，现在在生成 final_answer 和 zoom target 前统一转换为 xyxy。
+- Updated SFT assistant-only label masking for multi-turn agentic messages. All assistant action/final-answer spans can contribute to loss, while system/user/image/tool-observation tokens remain masked.
+- 更新多轮 agentic messages 的 SFT assistant-only label mask：所有 assistant action/final-answer span 都可参与 loss，system/user/image/tool-observation token 继续被 mask。
+- CPU validation built an 8-sample mixed smoke dataset: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260602_105640_104356Z/hf_dataset`; it contains `num_zoom_targets=3` and first record action sequence `zoom_in -> final_answer`.
+- CPU 验证已构建 8 条 mixed smoke 数据：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/tmp/action_sft_train_20260602_105640_104356Z/hf_dataset`；其中 `num_zoom_targets=3`，首条样本 action 序列为 `zoom_in -> final_answer`。
+- This prep does not run model training or generation and does not require GPU.
+- 本准备步骤没有运行模型训练或生成，不需要 GPU。
+
 ## Known Limitations / 已知限制
 
 - Full Qwen-VL policy integration into the real Agentic GRPO training loop is not implemented in this scaffold snapshot. The current model-load path is a no-training smoke test.

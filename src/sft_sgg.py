@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import re
 import glob
-from typing import Optional
+from typing import Any, Optional
 
 from accelerate import Accelerator
 from datasets import DatasetDict, load_dataset, load_from_disk
@@ -53,6 +53,7 @@ from trl import (
 )
 
 from qwen_vl_utils import process_vision_info
+from src.rl.mask_utils import mask_labels_to_response_spans
 
 # Allow dataset "image" column to be either a PIL.Image or a local image path (string).
 # This avoids relying on HuggingFace `Image` feature embedding during `save_to_disk`.
@@ -420,6 +421,75 @@ def _messages_from_dataset(example):
         messages = json.loads(messages)
     return messages
 
+
+def _messages_before_final_assistant(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the prompt turns before the final assistant response."""
+
+    for idx in range(len(messages) - 1, -1, -1):
+        if messages[idx].get("role") == "assistant":
+            return messages[:idx]
+    raise ValueError("assistant-only SFT masking requires at least one assistant message")
+
+
+def _active_token_count(batch: dict[str, Any]) -> int:
+    """Count non-padding tokens in a processor output batch with one row."""
+
+    attention_mask = batch.get("attention_mask")
+    if attention_mask is not None:
+        return int(attention_mask[0].sum().item())
+    return int(batch["input_ids"].shape[-1])
+
+
+def _token_count_for_messages(processor: Any, messages: list[dict[str, Any]], max_length: int, *, add_generation_prompt: bool) -> int:
+    """Tokenize a message prefix and return its active token count."""
+
+    text = processor.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=add_generation_prompt,
+    )
+    image_input = process_vision_info(messages)[0]
+    batch = processor(
+        text=[text],
+        images=image_input,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=max_length,
+    )
+    return _active_token_count(batch)
+
+
+def _assistant_response_token_spans(
+    processor: Any,
+    messages: list[dict[str, Any]],
+    max_length: int,
+) -> list[tuple[int, int]]:
+    """Return active-token spans for every assistant response in a chat."""
+
+    spans: list[tuple[int, int]] = []
+    for idx, message in enumerate(messages):
+        if message.get("role") != "assistant":
+            continue
+        start = _token_count_for_messages(
+            processor,
+            messages[:idx],
+            max_length,
+            add_generation_prompt=True,
+        )
+        end = _token_count_for_messages(
+            processor,
+            messages[: idx + 1],
+            max_length,
+            add_generation_prompt=False,
+        )
+        if end > start:
+            spans.append((start, end))
+    if not spans:
+        raise ValueError("assistant-only SFT masking requires at least one assistant message")
+    return spans
+
+
 def format_data(
     dataset_name,
     sample,
@@ -578,6 +648,10 @@ class CustomScriptArguments(ScriptArguments):
     use_dataset_messages: bool = field(
         default=False,
         metadata={"help": "Use prebuilt Qwen-style messages from the dataset instead of rebuilding legacy SGG targets."},
+    )
+    train_on_assistant_only: bool = field(
+        default=True,
+        metadata={"help": "Mask system/user prompt tokens so only assistant response tokens contribute to SFT loss."},
     )
     min_pixels: Optional[int] = field(
         default=None,
@@ -757,6 +831,7 @@ def main():
             processor,
             use_predefined_cats,
             use_dataset_messages,
+            train_on_assistant_only,
             max_length,
             max_objects,
             max_relationships,
@@ -777,6 +852,7 @@ def main():
             self.processor = processor
             self.use_predefined_cats = use_predefined_cats
             self.use_dataset_messages = use_dataset_messages
+            self.train_on_assistant_only = train_on_assistant_only
             self._db = {}
             self.max_length = max_length
             self.max_objects = max_objects
@@ -797,6 +873,7 @@ def main():
         def __call__(self, examples):
             # Get the texts and images, and apply the chat template
             texts, image_inputs = [], []
+            response_spans = []
             for example in examples:
                 if str(example) not in self._db:
                     self._db[str(example)] = 0
@@ -831,8 +908,16 @@ def main():
                     )["messages"]
                 self._db[str(example)] += 1
 
-                text = self.processor.apply_chat_template(format_example, tokenize=False)
+                text = self.processor.apply_chat_template(format_example, tokenize=False, add_generation_prompt=False)
                 image_input = process_vision_info(format_example)[0]
+                if self.train_on_assistant_only:
+                    response_spans.append(
+                        _assistant_response_token_spans(
+                            self.processor,
+                            format_example,
+                            self.max_length,
+                        )
+                    )
                 texts.append(text)
                 image_inputs.append(image_input)
     
@@ -848,6 +933,8 @@ def main():
     
             # The labels are the input_ids, and we mask the padding tokens in the loss computation
             labels = batch["input_ids"].clone()
+            if self.train_on_assistant_only:
+                mask_labels_to_response_spans(labels, response_spans, batch.get("attention_mask"))
             labels[labels == self.processor.tokenizer.pad_token_id] = -100  #
             # Ignore the image token index in the loss computation (model specific)
             if isinstance(self.processor, Qwen2VLProcessor) or isinstance(self.processor, Qwen2_5_VLProcessor):
@@ -900,6 +987,7 @@ def main():
             processor,
             script_args.use_predefined_cats,
             script_args.use_dataset_messages,
+            script_args.train_on_assistant_only,
             max_length=tokenizer_max_len,
             max_objects=script_args.max_objects,
             max_relationships=script_args.max_relationships,
