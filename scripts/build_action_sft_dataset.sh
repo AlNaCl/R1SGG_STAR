@@ -12,7 +12,8 @@ export OUTPUT_ROOT=${OUTPUT_ROOT:-/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs}
 CONFIG=${CONFIG:-configs/agentic_grpo.yaml}
 SPLIT=${SPLIT:-train}
 MAX_SAMPLES=${MAX_SAMPLES:-256}
-PROMPT_MODE=${PROMPT_MODE:-dataset}
+PROMPT_MODE=${PROMPT_MODE:-}
+TARGET_MODE=${TARGET_MODE:-}
 MAX_OBJECTS=${MAX_OBJECTS:-}
 MAX_RELATIONSHIPS=${MAX_RELATIONSHIPS:-}
 
@@ -20,8 +21,13 @@ args=(
   --config "${CONFIG}"
   --split "${SPLIT}"
   --max-samples "${MAX_SAMPLES}"
-  --prompt-mode "${PROMPT_MODE}"
 )
+if [[ -n "${PROMPT_MODE}" ]]; then
+  args+=(--prompt-mode "${PROMPT_MODE}")
+fi
+if [[ -n "${TARGET_MODE}" ]]; then
+  args+=(--target-mode "${TARGET_MODE}")
+fi
 if [[ -n "${MAX_OBJECTS}" ]]; then
   args+=(--max-objects "${MAX_OBJECTS}")
 fi

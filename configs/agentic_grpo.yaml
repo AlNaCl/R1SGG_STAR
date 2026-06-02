@@ -58,7 +58,8 @@ action_sft:
   max_samples: 256
   max_objects: 32
   max_relationships: 64
-  prompt_mode: dataset
+  prompt_mode: action_content
+  target_mode: mixed_scene_graph
   include_conversations: true
   save_hf_dataset: true
   output_dir: ${ACTION_SFT_OUTPUT_DIR:-}

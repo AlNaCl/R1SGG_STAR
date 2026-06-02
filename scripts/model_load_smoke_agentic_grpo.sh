@@ -16,6 +16,7 @@ export TRITON_CACHE_DIR=${TRITON_CACHE_DIR:-/root/autodl-tmp/triton_cache}
 
 CONFIG=${CONFIG:-configs/agentic_grpo.yaml}
 MODEL_NAME_OR_PATH=${MODEL_NAME_OR_PATH:-/root/autodl-tmp/STAR/r1sgg_data/checkpoints/qwen25vl-7b-sft-star-close-20260507_182608Z}
+PEFT_ADAPTER_PATH=${PEFT_ADAPTER_PATH:-${ADAPTER_PATH:-}}
 
 mkdir -p "${OUTPUT_ROOT}/logs" "${OUTPUT_ROOT}/checkpoints" "${OUTPUT_ROOT}/predictions" "${OUTPUT_ROOT}/eval_results" "${OUTPUT_ROOT}/tmp"
 
@@ -26,6 +27,9 @@ args=(
 
 if [[ -n "${PROCESSOR_PATH:-}" ]]; then
   args+=(--processor-path "${PROCESSOR_PATH}")
+fi
+if [[ -n "${PEFT_ADAPTER_PATH}" ]]; then
+  args+=(--peft-adapter-path "${PEFT_ADAPTER_PATH}")
 fi
 if [[ -n "${SPLIT:-}" ]]; then
   args+=(--split "${SPLIT}")

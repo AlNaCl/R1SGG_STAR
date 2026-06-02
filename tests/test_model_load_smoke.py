@@ -62,6 +62,8 @@ def test_run_model_load_smoke_builds_inputs_and_writes_non_overwriting_log(tmp_p
     model_dir = tmp_path / "model"
     model_dir.mkdir()
     (model_dir / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
     config = tmp_path / "config.yaml"
     config.write_text(
         "\n".join(
@@ -101,12 +103,14 @@ def test_run_model_load_smoke_builds_inputs_and_writes_non_overwriting_log(tmp_p
 
     def fake_model_loader(path, cfg: ModelLoadSmokeConfig):
         assert path == str(model_dir)
+        assert cfg.peft_adapter_path == str(adapter_dir)
         return SimpleNamespace(config=SimpleNamespace(model_type="qwen2_5_vl"), eval=lambda: None)
 
     summary = run_model_load_smoke(
         config_path=str(config),
         output_root=str(output_root),
         model_path=str(model_dir),
+        peft_adapter_path=str(adapter_dir),
         processor_loader=fake_processor_loader,
         model_loader=fake_model_loader,
         vision_info_fn=lambda messages: ([messages[-1]["content"][0]["image"]], None),
@@ -115,6 +119,7 @@ def test_run_model_load_smoke_builds_inputs_and_writes_non_overwriting_log(tmp_p
     assert fixed_log.read_text(encoding="utf-8") == "sentinel"
     assert summary["model_load_smoke"] is True
     assert summary["model_loaded"] is True
+    assert summary["peft_adapter_path"] == str(adapter_dir)
     assert summary["built_processor_inputs"] is True
     assert summary["checkpoint_written"] is False
     assert summary["inputs"]["batch_shapes"]["input_ids"] == [1, 3]
