@@ -73,6 +73,7 @@ def _build_generation_config(raw_config: dict[str, Any], **overrides: Any) -> Ge
     base = _build_smoke_config(
         raw_config,
         model_path=overrides.get("model_path"),
+        peft_adapter_path=overrides.get("peft_adapter_path"),
         processor_path=overrides.get("processor_path"),
         load_model=True,
         sample_index=overrides.get("sample_index"),
@@ -266,6 +267,7 @@ def run_generation_smoke(
     config_path: str | None = None,
     output_root: str | None = None,
     model_path: str | None = None,
+    peft_adapter_path: str | None = None,
     processor_path: str | None = None,
     split: str | None = None,
     sample_index: int | None = None,
@@ -282,6 +284,7 @@ def run_generation_smoke(
     cfg = _build_generation_config(
         raw_config,
         model_path=model_path,
+        peft_adapter_path=peft_adapter_path,
         processor_path=processor_path,
         split=split,
         sample_index=sample_index,
@@ -362,6 +365,7 @@ def run_generation_smoke(
         "no_training": True,
         "checkpoint_written": False,
         "model_path": cfg.model.model_path,
+        "peft_adapter_path": cfg.model.peft_adapter_path,
         "processor_path": processor_src,
         "split": cfg.model.split,
         "sample_index": cfg.model.sample_index,
@@ -405,6 +409,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", default="configs/agentic_grpo.yaml")
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--model-path", default=None)
+    parser.add_argument("--peft-adapter-path", default=None)
     parser.add_argument("--processor-path", default=None)
     parser.add_argument("--split", default=None)
     parser.add_argument("--sample-index", type=int, default=None)
@@ -414,6 +419,7 @@ def main(argv: list[str] | None = None) -> None:
         config_path=args.config,
         output_root=args.output_root,
         model_path=args.model_path,
+        peft_adapter_path=args.peft_adapter_path,
         processor_path=args.processor_path,
         split=args.split,
         sample_index=args.sample_index,

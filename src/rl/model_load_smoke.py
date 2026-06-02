@@ -26,6 +26,7 @@ class ModelLoadSmokeConfig:
     """Configuration for a no-training model/processor smoke test."""
 
     model_path: str = DEFAULT_MODEL_PATH
+    peft_adapter_path: str | None = None
     processor_path: str | None = None
     split: str = "val"
     sample_index: int = 0
@@ -217,6 +218,10 @@ def _load_model(model_path: str, cfg: ModelLoadSmokeConfig) -> Any:
         device_map=cfg.device_map,
         trust_remote_code=True,
     )
+    if cfg.peft_adapter_path:
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, cfg.peft_adapter_path, is_trainable=False)
     if hasattr(model, "eval"):
         model.eval()
     return model
@@ -259,6 +264,7 @@ def _build_smoke_config(
     raw_config: dict[str, Any],
     *,
     model_path: str | None = None,
+    peft_adapter_path: str | None = None,
     processor_path: str | None = None,
     load_model: bool | None = None,
     sample_index: int | None = None,
@@ -266,8 +272,10 @@ def _build_smoke_config(
 ) -> ModelLoadSmokeConfig:
     model_raw = _config_section(raw_config, "model")
     smoke_raw = _config_section(raw_config, "model_load_smoke")
+    raw_adapter_path = model_raw.get("peft_adapter_path", model_raw.get("adapter_path"))
     return ModelLoadSmokeConfig(
         model_path=model_path or str(model_raw.get("name_or_path") or DEFAULT_MODEL_PATH),
+        peft_adapter_path=peft_adapter_path or _optional_str(raw_adapter_path),
         processor_path=processor_path or _optional_str(model_raw.get("processor_path")),
         split=split or str(smoke_raw.get("split", "val")),
         sample_index=sample_index if sample_index is not None else int(smoke_raw.get("sample_index", 0)),
@@ -286,6 +294,7 @@ def run_model_load_smoke(
     config_path: str | None = None,
     output_root: str | None = None,
     model_path: str | None = None,
+    peft_adapter_path: str | None = None,
     processor_path: str | None = None,
     load_model: bool | None = None,
     sample_index: int | None = None,
@@ -302,6 +311,7 @@ def run_model_load_smoke(
     cfg = _build_smoke_config(
         raw_config,
         model_path=model_path,
+        peft_adapter_path=peft_adapter_path,
         processor_path=processor_path,
         load_model=load_model,
         sample_index=sample_index,
@@ -364,6 +374,7 @@ def run_model_load_smoke(
         "model_loaded": model_loaded,
         "built_processor_inputs": bool(input_summary),
         "model_path": cfg.model_path,
+        "peft_adapter_path": cfg.peft_adapter_path,
         "processor_path": processor_src,
         "split": cfg.split,
         "sample_index": cfg.sample_index,
@@ -398,6 +409,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", default="configs/agentic_grpo.yaml")
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--model-path", default=None)
+    parser.add_argument("--peft-adapter-path", default=None)
     parser.add_argument("--processor-path", default=None)
     parser.add_argument("--split", default=None)
     parser.add_argument("--sample-index", type=int, default=None)
@@ -407,6 +419,7 @@ def main(argv: list[str] | None = None) -> None:
         config_path=args.config,
         output_root=args.output_root,
         model_path=args.model_path,
+        peft_adapter_path=args.peft_adapter_path,
         processor_path=args.processor_path,
         load_model=False if args.skip_model_load else None,
         sample_index=args.sample_index,

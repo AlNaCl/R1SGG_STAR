@@ -86,6 +86,28 @@ This snapshot adds the first testable Agentic GRPO/RLVR scaffold without startin
 - Completed a 1-step LoRA action-format SFT smoke. Output adapter checkpoint: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_smoke_20260531_120351Z`. Final smoke metrics: loss `0.7815`, grad_norm `0.3373`, mean_token_accuracy `0.8819`.
 - 已完成 1-step LoRA action-format SFT smoke。输出 adapter checkpoint：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/checkpoints/sft_action_format_smoke_20260531_120351Z`。最终 smoke 指标：loss `0.7815`，grad_norm `0.3373`，mean_token_accuracy `0.8819`。
 
+## Adapter Generation Smoke Update / Adapter 生成冒烟验证更新
+
+- Date / 日期: 2026-06-01
+- Added PEFT adapter loading support to `model_load_smoke` and `generation_smoke` via `--peft-adapter-path`; the shell wrappers also accept `PEFT_ADAPTER_PATH` or `ADAPTER_PATH`.
+- 为 `model_load_smoke` 和 `generation_smoke` 增加 PEFT adapter 加载支持，可通过 `--peft-adapter-path` 指定；shell wrapper 同时支持 `PEFT_ADAPTER_PATH` 或 `ADAPTER_PATH` 环境变量。
+- Re-ran the requested smoke tests: `pytest tests/test_action_sft_dataset.py tests/test_rlvr_dataset.py tests/test_model_load_smoke.py tests/test_generation_smoke.py -q` -> `12 passed`.
+- 已重新运行指定冒烟测试：`pytest tests/test_action_sft_dataset.py tests/test_rlvr_dataset.py tests/test_model_load_smoke.py tests/test_generation_smoke.py -q` -> `12 passed`。
+- Compared the base STAR close checkpoint with the 100-step action-format SFT LoRA adapter on `val` sample_index `0` (`star_val_1006`) using `prompt_mode=action_only`.
+- 使用 `prompt_mode=action_only` 在 `val` 的 sample_index `0`（`star_val_1006`）上对比 STAR close base checkpoint 和 100-step action-format SFT LoRA adapter。
+- Base-only log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260601_083054_979212Z.json`; result: `used_zoom=true`, final `is_valid_json=true`, reward `0.1`, format_reward `1.0`.
+- Base-only 日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260601_083054_979212Z.json`；结果：`used_zoom=true`，最终 `is_valid_json=true`，reward `0.1`，format_reward `1.0`。
+- Adapter log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260601_083004_268869Z.json`; result: `used_zoom=true`, but the final action included extra explanatory text, so final `is_valid_json=false`, reward `0.0`, format_reward `0.0`.
+- Adapter 日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_smoke_20260601_083004_268869Z.json`；结果：`used_zoom=true`，但 final action 后追加了解释文本，因此最终 `is_valid_json=false`，reward `0.0`，format_reward `0.0`。
+- Conclusion: the 100-step action-format SFT adapter did not improve JSON action stability on this smoke sample versus base-only, so the 500-step expansion was not launched.
+- 结论：100-step action-format SFT adapter 在该冒烟样本上没有比 base-only 更稳定地输出 JSON action，因此未启动 500-step 扩大训练。
+- Added a batch base-vs-adapter generation smoke runner: `python -m src.rl.generation_smoke_batch` and `scripts/generation_smoke_batch_agentic_grpo.sh`. It loads each variant once, runs the same sample indices, writes full per-sample trajectories to a non-overwriting JSON log, and prints an aggregate summary by default.
+- 新增 batch base-vs-adapter 生成冒烟脚本：`python -m src.rl.generation_smoke_batch` 和 `scripts/generation_smoke_batch_agentic_grpo.sh`。脚本对每个 variant 只加载一次模型，跑相同 sample indices，将完整逐样本轨迹写入非覆盖 JSON 日志，并默认只在终端打印聚合摘要。
+- 20-sample batch log: `/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_batch_smoke_20260601_091412_970598Z.json`. Base metrics: `valid_json_rate=0.40`, `extra_text_rate=0.60`, `final_answer_valid_rate=0.25`, `mean_reward=0.0400`. Adapter metrics: `valid_json_rate=0.30`, `extra_text_rate=0.70`, `final_answer_valid_rate=0.15`, `mean_reward=0.0275`.
+- 20 样本 batch 日志：`/root/autodl-tmp/R1SGG_Agentic_GRPO_outputs/logs/generation_batch_smoke_20260601_091412_970598Z.json`。Base 指标：`valid_json_rate=0.40`，`extra_text_rate=0.60`，`final_answer_valid_rate=0.25`，`mean_reward=0.0400`。Adapter 指标：`valid_json_rate=0.30`，`extra_text_rate=0.70`，`final_answer_valid_rate=0.15`，`mean_reward=0.0275`。
+- Batch conclusion: the 100-step adapter remains worse than base on action-format stability (`valid_json_rate -0.10`, `extra_text_rate +0.10`), so neither 500-step SFT expansion nor GRPO should be launched from this adapter yet.
+- Batch 结论：100-step adapter 在 action-format 稳定性上仍弱于 base（`valid_json_rate -0.10`，`extra_text_rate +0.10`），因此暂不应基于该 adapter 启动 500-step SFT 扩大训练或 GRPO。
+
 ## Known Limitations / 已知限制
 
 - Full Qwen-VL policy integration into the real Agentic GRPO training loop is not implemented in this scaffold snapshot. The current model-load path is a no-training smoke test.
