@@ -93,7 +93,7 @@ def _build_generation_config(raw_config: dict[str, Any], **overrides: Any) -> Ge
         zoom_max_area_ratio=float(raw.get("zoom_max_area_ratio", 0.8)),
         strict_format=_bool_value(raw.get("strict_format"), False),
         action_reminder=_bool_value(raw.get("action_reminder"), True),
-        prompt_mode=str(raw.get("prompt_mode", "action_only")),
+        prompt_mode=str(os.environ.get("PROMPT_MODE") or raw.get("prompt_mode", "action_only")),
     )
 
 
@@ -228,9 +228,37 @@ def _action_only_messages(sample: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _action_content_messages(sample: dict[str, Any]) -> list[dict[str, Any]]:
+    size_text = f"{sample.get('width')}x{sample.get('height')}" if sample.get("width") and sample.get("height") else "unknown size"
+    prompt = (
+        "You are analyzing one ultra-high-resolution remote-sensing image. "
+        f"Image size: {size_text} pixels. "
+        "Return strict raw JSON action objects only, with no markdown fences and no extra text. "
+        "Use {\"thought\":\"...\",\"action\":\"zoom_in\",\"bbox\":[x1,y1,x2,y2]} when local evidence is needed. "
+        "Use {\"thought\":\"...\",\"action\":\"final_answer\",\"answer\":{\"objects\":[],\"relationships\":[]}} when answering. "
+        "The final_answer objects must use {\"id\":string,\"bbox\":[x1,y1,x2,y2]} and relationships must use "
+        "{\"subject\":string,\"predicate\":string,\"object\":string}. Preserve class.index object ids."
+    )
+    return [
+        {
+            "role": "system",
+            "content": "You are a precise remote-sensing visual grounding and scene graph assistant.",
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": sample["image"]},
+                {"type": "text", "text": prompt},
+            ],
+        },
+    ]
+
+
 def _initial_messages(sample: dict[str, Any], cfg: GenerationSmokeConfig) -> list[dict[str, Any]]:
     if cfg.prompt_mode == "action_only":
         return _action_only_messages(sample)
+    if cfg.prompt_mode == "action_content":
+        return _action_content_messages(sample)
     if cfg.prompt_mode == "dataset":
         messages = sample_to_qwen_messages(sample)
         if cfg.action_reminder:
