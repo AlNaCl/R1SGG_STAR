@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import torch
 from PIL import Image
 
-from src.rl.generation_smoke import run_generation_smoke
+from src.rl.generation_smoke import _build_generation_config, _initial_messages, run_generation_smoke
 from src.rl.model_load_smoke import ModelLoadSmokeConfig
 
 
@@ -149,3 +149,34 @@ def test_run_generation_smoke_executes_one_zoom_then_final_answer(tmp_path, monk
     assert summary["reward"]["is_valid_json"] is True
     assert Path(summary["log_path"]).is_file()
     assert Path(summary["log_path"]) != fixed_log
+
+
+def test_initial_messages_support_action_content_prompt():
+    messages = _initial_messages(
+        {
+            "image": "/tmp/sample.png",
+            "width": 1024,
+            "height": 2048,
+        },
+        SimpleNamespace(prompt_mode="action_content"),
+    )
+
+    text = messages[1]["content"][1]["text"]
+    assert "Image size: 1024x2048 pixels" in text
+    assert "Return strict raw JSON action objects only" in text
+    assert "\"action\":\"zoom_in\"" in text
+    assert "\"action\":\"final_answer\"" in text
+    assert "Preserve class.index object ids" in text
+
+
+def test_generation_config_prompt_mode_env_override(monkeypatch):
+    monkeypatch.setenv("PROMPT_MODE", "action_content")
+
+    cfg = _build_generation_config(
+        {
+            "model": {"name_or_path": "/tmp/model"},
+            "generation_smoke": {"prompt_mode": "action_only"},
+        }
+    )
+
+    assert cfg.prompt_mode == "action_content"
